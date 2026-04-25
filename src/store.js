@@ -85,6 +85,7 @@ function add(data) {
     method: data.method,
     path: data.path,
     model: data.model,
+    upstream: data.upstream,
     request: data.request,
     response: null,
     chunks: [],
