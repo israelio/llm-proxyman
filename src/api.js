@@ -75,6 +75,7 @@ router.put('/config', (req, res) => {
     config.upstreamUrl = upstreamUrl;
   }
 
+  config.save();
   res.json({ mode: config.mode, upstreamUrl: config.upstreamUrl });
 });
 

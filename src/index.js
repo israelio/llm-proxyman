@@ -26,7 +26,7 @@ app.listen(PORT, () => {
   console.log(`Local proxy listening on http://localhost:${PORT}`);
   console.log(`Forwarding to upstream: ${config.upstreamUrl}`);
   console.log(`Web UI: http://localhost:${PORT}`);
-  if (process.env.PERSIST === 'true') {
-    console.log(`Persistence enabled: ${process.env.DB_PATH || './proxy-history.db'}`);
+  if (process.env.PERSIST !== 'false') {
+    console.log(`Persistence: ${process.env.DB_PATH || './proxy-history.db'}`);
   }
 });

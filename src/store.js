@@ -11,7 +11,7 @@ function tryParse(str) {
 }
 
 function initDb() {
-  if (process.env.PERSIST !== 'true') return;
+  if (process.env.PERSIST === 'false') return;
   try {
     const { DatabaseSync } = require('node:sqlite');
     db = new DatabaseSync(process.env.DB_PATH || './proxy-history.db');
@@ -22,6 +22,7 @@ function initDb() {
         method TEXT,
         path TEXT,
         model TEXT,
+        upstream TEXT,
         status TEXT,
         duration_ms INTEGER,
         request_json TEXT,
@@ -31,6 +32,8 @@ function initDb() {
         error TEXT
       )
     `);
+    // migration: add upstream column to existing databases
+    try { db.exec('ALTER TABLE requests ADD COLUMN upstream TEXT'); } catch {}
     const rows = db.prepare(
       'SELECT * FROM requests ORDER BY timestamp DESC LIMIT ?'
     ).all(MAX_HISTORY);
@@ -40,6 +43,7 @@ function initDb() {
       method: row.method,
       path: row.path,
       model: row.model,
+      upstream: row.upstream,
       status: row.status,
       durationMs: row.duration_ms,
       request: tryParse(row.request_json),
@@ -60,11 +64,11 @@ function persistRecord(r) {
   try {
     db.prepare(`
       INSERT OR REPLACE INTO requests
-        (id, timestamp, method, path, model, status, duration_ms,
+        (id, timestamp, method, path, model, upstream, status, duration_ms,
          request_json, response_json, chunks_json, usage_json, error)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
     `).run(
-      r.id, r.timestamp, r.method, r.path, r.model, r.status, r.durationMs,
+      r.id, r.timestamp, r.method, r.path, r.model, r.upstream ?? null, r.status, r.durationMs,
       JSON.stringify(r.request), JSON.stringify(r.response),
       JSON.stringify(r.chunks), JSON.stringify(r.usage), r.error
     );
