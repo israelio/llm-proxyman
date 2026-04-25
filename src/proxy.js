@@ -3,17 +3,35 @@ const https = require('node:https');
 const { URL } = require('node:url');
 const store = require('./store');
 const sse = require('./sse');
+const config = require('./config');
 
 function parseUsage(body) {
-  const usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+  let inputTokens = 0, outputTokens = 0, foundAny = false;
 
-  // Scan SSE data lines (streaming response)
   for (const line of body.split('\n')) {
     if (!line.startsWith('data: ') || line === 'data: [DONE]') continue;
     try {
       const json = JSON.parse(line.slice(6));
-      if (json.usage) return extractUsageFields(json.usage);
+      // Anthropic: input tokens nested in message_start.message.usage
+      if (json.type === 'message_start' && json.message?.usage) {
+        const u = json.message.usage;
+        inputTokens = (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
+        foundAny = true;
+      }
+      // Anthropic: output tokens in message_delta.usage
+      if (json.type === 'message_delta' && json.usage?.output_tokens != null) {
+        outputTokens = json.usage.output_tokens;
+        foundAny = true;
+      }
+      // OpenAI streaming: usage object without a .type field
+      if (!json.type && json.usage) {
+        return extractUsageFields(json.usage);
+      }
     } catch {}
+  }
+
+  if (foundAny) {
+    return { inputTokens, outputTokens, totalTokens: inputTokens + outputTokens };
   }
 
   // Non-streaming JSON response
@@ -22,7 +40,7 @@ function parseUsage(body) {
     if (json.usage) return extractUsageFields(json.usage);
   } catch {}
 
-  return usage;
+  return { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
 }
 
 function extractUsageFields(u) {
@@ -35,12 +53,11 @@ function extractUsageFields(u) {
   };
 }
 
-function createProxyMiddleware(upstreamUrl) {
-  const upstream = new URL(upstreamUrl);
-  const isHttps = upstream.protocol === 'https:';
-  const transport = isHttps ? https : http;
-
+function createProxyMiddleware(overrideUrl) {
   return function proxyMiddleware(req, res) {
+    const upstream = new URL(overrideUrl || config.upstreamUrl);
+    const isHttps = upstream.protocol === 'https:';
+    const transport = isHttps ? https : http;
     const bodyChunks = [];
     req.on('data', c => bodyChunks.push(c));
     req.on('end', () => {

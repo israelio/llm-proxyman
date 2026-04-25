@@ -1,5 +1,6 @@
 const express = require('express');
 const store = require('./store');
+const config = require('./config');
 
 const router = express.Router();
 
@@ -42,6 +43,24 @@ router.get('/export', (req, res) => {
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Content-Disposition', 'attachment; filename="proxy-history.json"');
   res.json(records);
+});
+
+router.get('/config', (req, res) => {
+  res.json({ upstreamUrl: config.upstreamUrl });
+});
+
+router.put('/config', (req, res) => {
+  const { upstreamUrl } = req.body;
+  if (!upstreamUrl || typeof upstreamUrl !== 'string') {
+    return res.status(400).json({ error: 'upstreamUrl required' });
+  }
+  try {
+    new URL(upstreamUrl); // validate
+  } catch {
+    return res.status(400).json({ error: 'invalid URL' });
+  }
+  config.upstreamUrl = upstreamUrl;
+  res.json({ upstreamUrl: config.upstreamUrl });
 });
 
 module.exports = router;

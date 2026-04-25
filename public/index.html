@@ -11,11 +11,16 @@ body{font-family:'SF Mono',Monaco,monospace;background:#111;color:#d4d4d4;height
 .toolbar input,.toolbar select{background:#252525;border:1px solid #3a3a3a;color:#d4d4d4;padding:4px 8px;border-radius:4px;font-family:inherit;font-size:12px}
 .toolbar input{width:180px}
 .toolbar input:focus,.toolbar select:focus{outline:none;border-color:#4a9eff}
+/* upstream input wider */
+#upstream-input{width:260px}
 .btn{background:#252525;border:1px solid #3a3a3a;color:#d4d4d4;padding:4px 10px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px}
 .btn:hover{background:#2f2f2f;border-color:#555}
 .btn.danger{border-color:#5a2222;color:#ff6b6b}
 .btn.danger:hover{background:#2a1111}
-.conn{margin-left:auto;font-size:11px}
+.btn.primary{border-color:#3a6aaa;color:#4a9eff}
+.btn.primary:hover{background:#1a2a3a}
+.sep{width:1px;background:#2a2a2a;height:20px;flex-shrink:0}
+.conn{margin-left:auto;font-size:11px;white-space:nowrap}
 .conn.on{color:#4ec94e}
 .conn.off{color:#ff6b6b}
 .main{display:flex;flex:1;overflow:hidden}
@@ -43,38 +48,27 @@ body{font-family:'SF Mono',Monaco,monospace;background:#111;color:#d4d4d4;height
 .tab-body{flex:1;overflow-y:auto;padding:12px}
 .pane{display:none}
 .pane.active{display:block}
-/* pane header with actions */
 .pane-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:6px;min-height:20px}
 .pane-hdr-left{flex:1;font-size:11px;color:#555}
 .pane-actions{display:flex;gap:4px;flex-shrink:0}
-.toggle-btn{font-size:10px;padding:2px 8px;background:#252525;border:1px solid #3a3a3a;color:#888;border-radius:3px;cursor:pointer;font-family:inherit}
-.toggle-btn:hover{color:#d4d4d4;border-color:#555}
-.toggle-btn.on{color:#4a9eff;border-color:#3a6aaa;background:#1a2a3a}
-.copy-btn{font-size:10px;padding:2px 8px;background:#252525;border:1px solid #3a3a3a;color:#888;border-radius:3px;cursor:pointer;font-family:inherit}
-.copy-btn:hover{color:#d4d4d4}
-/* plain pre blocks */
+.xbtn{font-size:10px;padding:2px 7px;background:#252525;border:1px solid #3a3a3a;color:#888;border-radius:3px;cursor:pointer;font-family:inherit}
+.xbtn:hover{color:#d4d4d4;border-color:#555}
+.xbtn.on{color:#4a9eff;border-color:#3a6aaa;background:#1a2a3a}
 pre{background:#181818;border:1px solid #2a2a2a;padding:12px;border-radius:4px;font-size:12px;overflow-x:auto;white-space:pre-wrap;word-break:break-all;line-height:1.6}
-/* streaming live box */
 .stream-box{background:#181818;border:1px solid #2a2a2a;padding:12px;border-radius:4px;font-size:12px;min-height:80px;white-space:pre-wrap;word-break:break-all;line-height:1.5}
 .stream-cursor{display:inline-block;width:8px;height:13px;background:#4a9eff;animation:blink .7s step-end infinite;vertical-align:text-bottom}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
-/* token cards */
 .tok-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
 .tok-card{background:#181818;border:1px solid #2a2a2a;border-radius:4px;padding:14px;text-align:center}
 .tok-card .val{font-size:28px;font-weight:700;color:#4a9eff}
 .tok-card .lbl{font-size:11px;color:#555;margin-top:4px}
 .tok-meta{font-size:12px;color:#666;line-height:1.8}
-/* JSON syntax colours */
-.j-k{color:#9cdcfe}
-.j-s{color:#ce9178}
-.j-n{color:#b5cea8}
-.j-b{color:#569cd6}
-.j-nl{color:#569cd6}
-.j-idx{color:#555;font-size:11px}
+/* JSON syntax */
+.j-k{color:#9cdcfe}.j-s{color:#ce9178}.j-n{color:#b5cea8}.j-b{color:#569cd6}.j-nl{color:#569cd6}.j-idx{color:#555;font-size:11px}
 /* collapsible tree */
-.j-tree{background:#181818;border:1px solid #2a2a2a;padding:12px;border-radius:4px;font-size:12px;line-height:1.7;overflow-x:auto;tab-size:2}
+.j-tree{background:#181818;border:1px solid #2a2a2a;padding:12px;border-radius:4px;font-size:12px;line-height:1.7;overflow-x:auto}
 .j-tree div{white-space:nowrap}
-.j-toggle{display:inline-block;width:14px;text-align:center;font-size:10px;color:#555;cursor:pointer;user-select:none;flex-shrink:0}
+.j-toggle{display:inline-block;width:14px;text-align:center;font-size:10px;color:#555;cursor:pointer;user-select:none}
 .j-toggle:hover{color:#aaa}
 .j-summary{color:#555;font-size:11px;font-style:italic;cursor:pointer}
 .j-summary:hover{color:#888}
@@ -92,9 +86,13 @@ pre{background:#181818;border:1px solid #2a2a2a;padding:12px;border-radius:4px;f
     <option value="error">Error</option>
     <option value="pending">Pending</option>
   </select>
+  <div class="sep"></div>
   <button class="btn" onclick="doExport('json')">Export JSON</button>
   <button class="btn" onclick="doExport('csv')">Export CSV</button>
   <button class="btn danger" onclick="doClear()">Clear</button>
+  <div class="sep"></div>
+  <input id="upstream-input" type="text" placeholder="Upstream URL">
+  <button class="btn primary" onclick="setUpstream()">Set Upstream</button>
   <span id="cs" class="conn off">&#9679; Disconnected</span>
 </div>
 <div class="main">
@@ -116,7 +114,7 @@ const streaming = {};
 let sel = null;
 let prettyMode = true;
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+// ── helpers ───────────────────────────────────────────────────────────────────
 
 function esc(s) {
   if (s == null) return '';
@@ -141,21 +139,22 @@ function extractText(chunk) {
   return out;
 }
 
+// Reconstruct extracted text from stored chunks (for historical records)
+function getStreamedText(r) {
+  if (streaming[r.id]) return streaming[r.id];
+  if (!r.chunks || r.chunks.length === 0) return '';
+  return r.chunks.map(c => extractText(c)).join('');
+}
+
 // ── collapsible JSON tree ─────────────────────────────────────────────────────
 
 function renderNodeInto(parent, data, key) {
   const row = document.createElement('div');
 
-  // key label
   if (key !== null) {
     const k = document.createElement('span');
-    if (typeof key === 'number') {
-      k.className = 'j-idx';
-      k.textContent = key;
-    } else {
-      k.className = 'j-k';
-      k.textContent = JSON.stringify(key);
-    }
+    if (typeof key === 'number') { k.className = 'j-idx'; k.textContent = key; }
+    else { k.className = 'j-k'; k.textContent = JSON.stringify(key); }
     row.appendChild(k);
     row.appendChild(document.createTextNode(': '));
   }
@@ -174,55 +173,47 @@ function renderNodeInto(parent, data, key) {
   const count = isArr ? data.length : Object.keys(data).length;
   const [o, c] = isArr ? ['[', ']'] : ['{', '}'];
 
-  // empty container
   if (count === 0) {
-    const v = document.createElement('span');
-    v.textContent = o + c;
-    row.appendChild(v);
+    row.appendChild(Object.assign(document.createElement('span'), {textContent: o + c}));
     parent.appendChild(row);
     return;
   }
 
-  // toggle arrow (prepend before key)
+  // toggle arrow — starts collapsed (▸)
   const toggle = document.createElement('span');
   toggle.className = 'j-toggle';
-  toggle.textContent = '▾';
+  toggle.textContent = '▸';
   row.insertBefore(toggle, row.firstChild);
 
-  // opening bracket
   row.appendChild(Object.assign(document.createElement('span'), {textContent: o}));
 
-  // collapsed summary (hidden by default)
+  // summary visible by default (collapsed state)
   const summary = Object.assign(document.createElement('span'), {
     className: 'j-summary',
     textContent: isArr ? ` [${count} items]` : ` {${count} keys}`,
   });
-  summary.style.display = 'none';
   row.appendChild(summary);
 
-  // inline close (hidden by default)
+  // inline close visible by default
   const closeInline = Object.assign(document.createElement('span'), {textContent: c});
-  closeInline.style.display = 'none';
   row.appendChild(closeInline);
 
   parent.appendChild(row);
 
-  // children container
+  // children — hidden by default
   const kids = document.createElement('div');
   kids.className = 'j-children';
-  if (isArr) {
-    data.forEach((item, i) => renderNodeInto(kids, item, i));
-  } else {
-    Object.entries(data).forEach(([k, v]) => renderNodeInto(kids, v, k));
-  }
+  kids.style.display = 'none';
+  if (isArr) data.forEach((item, i) => renderNodeInto(kids, item, i));
+  else Object.entries(data).forEach(([k, v]) => renderNodeInto(kids, v, k));
   parent.appendChild(kids);
 
-  // closing bracket on own line
+  // closing bracket on own line — hidden by default
   const closeRow = document.createElement('div');
+  closeRow.style.display = 'none';
   closeRow.appendChild(Object.assign(document.createElement('span'), {textContent: c}));
   parent.appendChild(closeRow);
 
-  // click handler
   const doToggle = e => {
     e.stopPropagation();
     const collapsed = toggle.textContent === '▸';
@@ -250,7 +241,19 @@ function buildJsonTree(container, data) {
   container.appendChild(pre);
 }
 
-// populate containers after renderDetail sets innerHTML
+function expandAll(containerId) {
+  document.querySelectorAll(`#${containerId} .j-toggle`).forEach(t => {
+    if (t.textContent === '▸') t.click();
+  });
+}
+
+function collapseAll(containerId) {
+  document.querySelectorAll(`#${containerId} .j-toggle`).forEach(t => {
+    if (t.textContent === '▾') t.click();
+  });
+}
+
+// fill JSON containers after renderDetail sets innerHTML
 function populateJsonTrees(r) {
   const isLive = r.status === 'pending' || r.status === 'streaming';
 
@@ -264,17 +267,18 @@ function populateJsonTrees(r) {
   // response pane (only when complete)
   const resEl = document.getElementById('json-response');
   if (resEl && !isLive && r.status !== 'error') {
-    if (prettyMode && r.response && typeof r.response === 'object') {
-      buildJsonTree(resEl, r.response);
-    } else if (prettyMode && streaming[r.id]) {
-      resEl.innerHTML = `<pre>${esc(streaming[r.id])}</pre>`;
+    if (r.response && typeof r.response === 'object') {
+      // non-streaming JSON response — show tree
+      if (prettyMode) buildJsonTree(resEl, r.response);
+      else resEl.innerHTML = `<pre>${esc(JSON.stringify(r.response, null, 2))}</pre>`;
     } else {
-      const raw = typeof r.response === 'string' ? r.response : JSON.stringify(r.response, null, 2);
-      resEl.innerHTML = `<pre>${esc(raw)}</pre>`;
+      // streaming SSE response — show extracted text
+      const text = getStreamedText(r);
+      resEl.innerHTML = `<pre>${esc(text || (typeof r.response === 'string' ? r.response : ''))}</pre>`;
     }
   }
 
-  // raw pane
+  // raw pane — always full JSON
   const rawEl = document.getElementById('json-raw');
   if (rawEl) {
     const rawData = {request: r.request, response: r.response, chunks: r.chunks, usage: r.usage};
@@ -347,9 +351,14 @@ function renderDetail(r) {
   const tab = activeTab();
   const isLive = r.status === 'pending' || r.status === 'streaming';
   const liveContent = streaming[r.id] || '';
-  const dp = document.getElementById('dp');
-  const tb = `<button class="toggle-btn${prettyMode?' on':''}" onclick="togglePretty()">${prettyMode?'Raw':'Pretty'}</button>`;
 
+  // pane action buttons
+  const tb = `<button class="xbtn${prettyMode?' on':''}" onclick="togglePretty()">${prettyMode?'Raw':'Pretty'}</button>`;
+  const reqBtns = `${tb}<button class="xbtn" onclick="expandAll('json-request')">+All</button><button class="xbtn" onclick="collapseAll('json-request')">&minus;All</button>`;
+  const resBtns = `${tb}<button class="xbtn" onclick="expandAll('json-response')">+All</button><button class="xbtn" onclick="collapseAll('json-response')">&minus;All</button>`;
+  const rawBtns = `${tb}<button class="xbtn" onclick="expandAll('json-raw')">+All</button><button class="xbtn" onclick="collapseAll('json-raw')">&minus;All</button><button class="xbtn" onclick="copyRaw()">Copy</button>`;
+
+  const dp = document.getElementById('dp');
   dp.innerHTML = `
     <div class="tabs">
       <div class="tab${tab==='request'?' active':''}" data-tab="request" onclick="switchTab('request')">Request</div>
@@ -362,7 +371,7 @@ function renderDetail(r) {
       <div id="pane-request" class="pane${tab==='request'?' active':''}">
         <div class="pane-hdr">
           <span class="pane-hdr-left">${esc(r.method)} ${esc(r.path)} &middot; ${fmt(r.timestamp)}</span>
-          <div class="pane-actions">${tb}</div>
+          <div class="pane-actions">${reqBtns}</div>
         </div>
         <div id="json-request"></div>
       </div>
@@ -373,8 +382,8 @@ function renderDetail(r) {
           : r.status === 'error'
             ? `<pre style="color:#ff5555">${esc(r.error||'Unknown error')}</pre>`
             : `<div class="pane-hdr">
-                 <span class="pane-hdr-left"></span>
-                 <div class="pane-actions">${tb}</div>
+                <span class="pane-hdr-left"></span>
+                <div class="pane-actions">${r.response && typeof r.response === 'object' ? resBtns : tb}</div>
                </div>
                <div id="json-response"></div>`
         }
@@ -397,10 +406,7 @@ function renderDetail(r) {
       <div id="pane-raw" class="pane${tab==='raw'?' active':''}">
         <div class="pane-hdr">
           <span class="pane-hdr-left"></span>
-          <div class="pane-actions">
-            ${tb}
-            <button class="copy-btn" onclick="copyRaw()">Copy</button>
-          </div>
+          <div class="pane-actions">${rawBtns}</div>
         </div>
         <div id="json-raw"></div>
       </div>
@@ -425,9 +431,34 @@ function switchTab(tab) {
 function copyRaw() {
   if (!sel) return;
   const r = records[sel];
-  const data = {request: r.request, response: r.response, chunks: r.chunks, usage: r.usage};
-  navigator.clipboard.writeText(JSON.stringify(data, null, 2)).catch(()=>{});
+  navigator.clipboard.writeText(JSON.stringify(
+    {request: r.request, response: r.response, chunks: r.chunks, usage: r.usage}, null, 2
+  )).catch(()=>{});
 }
+
+// ── upstream switcher ─────────────────────────────────────────────────────────
+
+function setUpstream() {
+  const val = document.getElementById('upstream-input').value.trim();
+  if (!val) return;
+  fetch('/api/config', {
+    method: 'PUT',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({upstreamUrl: val}),
+  })
+    .then(r => r.json())
+    .then(d => {
+      if (d.error) { alert(d.error); return; }
+      document.getElementById('upstream-input').value = d.upstreamUrl;
+      document.getElementById('upstream-input').style.borderColor = '#4ec94e';
+      setTimeout(() => document.getElementById('upstream-input').style.borderColor = '', 1500);
+    })
+    .catch(() => alert('Failed to update upstream'));
+}
+
+document.getElementById('upstream-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') setUpstream();
+});
 
 // ── actions ───────────────────────────────────────────────────────────────────
 
@@ -503,10 +534,19 @@ function connect() {
 ['q','mf','sf'].forEach(id => document.getElementById(id).addEventListener('input', renderList));
 document.getElementById('sf').addEventListener('change', renderList);
 
+// load current upstream
+fetch('/api/config').then(r=>r.json()).then(d => {
+  document.getElementById('upstream-input').value = d.upstreamUrl || '';
+});
+
+// load history; reconstruct streaming text from stored chunks
 fetch('/api/requests')
   .then(r=>r.json())
   .then(data => {
-    data.forEach(r => { records[r.id] = r; streaming[r.id] = ''; });
+    data.forEach(r => {
+      records[r.id] = r;
+      streaming[r.id] = (r.chunks || []).map(c => extractText(c)).join('');
+    });
     renderList();
   });
 

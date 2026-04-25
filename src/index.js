@@ -3,10 +3,10 @@ const express = require('express');
 const path = require('node:path');
 const sse = require('./sse');
 const api = require('./api');
+const config = require('./config');
 const { createProxyMiddleware } = require('./proxy');
 
 const PORT = parseInt(process.env.PROXY_PORT || '8080', 10);
-const UPSTREAM_URL = process.env.UPSTREAM_URL || 'http://127.0.0.1:8001';
 
 const app = express();
 
@@ -19,12 +19,12 @@ app.use('/api', express.json(), api);
 // Static web UI
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
-// Proxy — must be last; do NOT use body-parsing middleware before this
-app.all('/v1/*', createProxyMiddleware(UPSTREAM_URL));
+// Proxy — must be last; reads config.upstreamUrl dynamically per request
+app.all('/v1/*', createProxyMiddleware());
 
 app.listen(PORT, () => {
   console.log(`Local proxy listening on http://localhost:${PORT}`);
-  console.log(`Forwarding to upstream: ${UPSTREAM_URL}`);
+  console.log(`Forwarding to upstream: ${config.upstreamUrl}`);
   console.log(`Web UI: http://localhost:${PORT}`);
   if (process.env.PERSIST === 'true') {
     console.log(`Persistence enabled: ${process.env.DB_PATH || './proxy-history.db'}`);
