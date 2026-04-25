@@ -95,7 +95,9 @@ pre{background:#181818;border:1px solid #2a2a2a;padding:12px;border-radius:4px;f
   <button class="btn danger" onclick="doClear()">Clear</button>
   <div class="sep"></div>
   <input id="upstream-input" type="text" placeholder="Upstream URL">
-  <button class="btn primary" onclick="setUpstream()">Set Upstream</button>
+  <button class="btn primary" onclick="setUpstream()">Set</button>
+  <button class="btn" onclick="setUpstreamPreset('https://api.anthropic.com')" title="Anthropic API">Anthropic</button>
+  <button class="btn" onclick="setUpstreamPreset('http://127.0.0.1:8001')" title="Local LLM">Local LLM</button>
   <span id="cs" class="conn off">&#9679; Disconnected</span>
 </div>
 <div class="main">
@@ -469,6 +471,11 @@ function setUpstream() {
       setTimeout(() => document.getElementById('upstream-input').style.borderColor = '', 1500);
     })
     .catch(err => alert('Failed to update upstream: ' + err.message));
+}
+
+function setUpstreamPreset(url) {
+  document.getElementById('upstream-input').value = url;
+  setUpstream();
 }
 
 document.getElementById('upstream-input').addEventListener('keydown', e => {
