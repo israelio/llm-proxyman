@@ -1,4 +1,5 @@
 const express = require('express');
+const path = require('node:path');
 const store = require('./store');
 const config = require('./config');
 
@@ -43,6 +44,11 @@ router.get('/export', (req, res) => {
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Content-Disposition', 'attachment; filename="proxy-history.json"');
   res.json(records);
+});
+
+router.get('/version', (req, res) => {
+  const pkg = require(path.join(__dirname, '..', 'package.json'));
+  res.json({ version: pkg.version });
 });
 
 router.get('/config', (req, res) => {

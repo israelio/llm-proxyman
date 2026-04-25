@@ -19,6 +19,7 @@ body{font-family:'SF Mono',Monaco,monospace;background:#111;color:#d4d4d4;height
 .btn.danger:hover{background:#2a1111}
 .btn.primary{border-color:#3a6aaa;color:#4a9eff}
 .btn.primary:hover{background:#1a2a3a}
+#app-title{font-size:13px;font-weight:600;color:#c0c0c0;white-space:nowrap;flex-shrink:0}
 .sep{width:1px;background:#2a2a2a;height:20px;flex-shrink:0}
 .conn{margin-left:auto;font-size:11px;white-space:nowrap}
 .conn.on{color:#4ec94e}
@@ -77,6 +78,8 @@ pre{background:#181818;border:1px solid #2a2a2a;padding:12px;border-radius:4px;f
 </head>
 <body>
 <div class="toolbar">
+  <span id="app-title">Local LLM Proxy <span id="app-version" style="font-size:10px;color:#444"></span></span>
+  <div class="sep"></div>
   <input id="q" type="text" placeholder="Search messages...">
   <select id="mf"><option value="">All models</option></select>
   <select id="sf">
@@ -125,6 +128,14 @@ function fmt(ts) {
   return new Date(ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
 }
 
+function fmtDuration(ms) {
+  if (ms < 1000) return ms + 'ms';
+  if (ms < 60000) return (ms / 1000).toFixed(1) + 's';
+  const m = Math.floor(ms / 60000);
+  const s = ((ms % 60000) / 1000).toFixed(0);
+  return m + 'm ' + s + 's';
+}
+
 function extractText(chunk) {
   let out = '';
   for (const line of chunk.split('\n')) {
@@ -148,14 +159,16 @@ function getStreamedText(r) {
 
 // ── collapsible JSON tree ─────────────────────────────────────────────────────
 
-function renderNodeInto(parent, data, key) {
+function renderNodeInto(parent, data, key, depth) {
+  if (depth === undefined) depth = 0;
   const row = document.createElement('div');
 
+  let keyEl = null;
   if (key !== null) {
-    const k = document.createElement('span');
-    if (typeof key === 'number') { k.className = 'j-idx'; k.textContent = key; }
-    else { k.className = 'j-k'; k.textContent = JSON.stringify(key); }
-    row.appendChild(k);
+    keyEl = document.createElement('span');
+    if (typeof key === 'number') { keyEl.className = 'j-idx'; keyEl.textContent = key; }
+    else { keyEl.className = 'j-k'; keyEl.textContent = JSON.stringify(key); }
+    row.appendChild(keyEl);
     row.appendChild(document.createTextNode(': '));
   }
 
@@ -179,52 +192,54 @@ function renderNodeInto(parent, data, key) {
     return;
   }
 
-  // toggle arrow — starts collapsed (▸)
+  const startExpanded = depth === 0;
+
   const toggle = document.createElement('span');
   toggle.className = 'j-toggle';
-  toggle.textContent = '▸';
+  toggle.textContent = startExpanded ? '▾' : '▸';
   row.insertBefore(toggle, row.firstChild);
 
   row.appendChild(Object.assign(document.createElement('span'), {textContent: o}));
 
-  // summary visible by default (collapsed state)
   const summary = Object.assign(document.createElement('span'), {
     className: 'j-summary',
     textContent: isArr ? ` [${count} items]` : ` {${count} keys}`,
   });
+  summary.style.display = startExpanded ? 'none' : '';
   row.appendChild(summary);
 
-  // inline close visible by default
   const closeInline = Object.assign(document.createElement('span'), {textContent: c});
+  closeInline.style.display = startExpanded ? 'none' : '';
   row.appendChild(closeInline);
 
   parent.appendChild(row);
 
-  // children — hidden by default
   const kids = document.createElement('div');
   kids.className = 'j-children';
-  kids.style.display = 'none';
-  if (isArr) data.forEach((item, i) => renderNodeInto(kids, item, i));
-  else Object.entries(data).forEach(([k, v]) => renderNodeInto(kids, v, k));
+  kids.style.display = startExpanded ? '' : 'none';
+  if (isArr) data.forEach((item, i) => renderNodeInto(kids, item, i, depth + 1));
+  else Object.entries(data).forEach(([k, v]) => renderNodeInto(kids, v, k, depth + 1));
   parent.appendChild(kids);
 
-  // closing bracket on own line — hidden by default
   const closeRow = document.createElement('div');
-  closeRow.style.display = 'none';
+  closeRow.style.display = startExpanded ? '' : 'none';
   closeRow.appendChild(Object.assign(document.createElement('span'), {textContent: c}));
   parent.appendChild(closeRow);
 
+  let isCollapsed = !startExpanded;
+
   const doToggle = e => {
     e.stopPropagation();
-    const collapsed = toggle.textContent === '▸';
-    toggle.textContent = collapsed ? '▾' : '▸';
-    kids.style.display = collapsed ? '' : 'none';
-    closeRow.style.display = collapsed ? '' : 'none';
-    summary.style.display = collapsed ? 'none' : '';
-    closeInline.style.display = collapsed ? 'none' : '';
+    isCollapsed = !isCollapsed;
+    toggle.textContent = isCollapsed ? '▸' : '▾';
+    kids.style.display = isCollapsed ? 'none' : '';
+    closeRow.style.display = isCollapsed ? 'none' : '';
+    summary.style.display = isCollapsed ? '' : 'none';
+    closeInline.style.display = isCollapsed ? '' : 'none';
   };
   toggle.addEventListener('click', doToggle);
   summary.addEventListener('click', doToggle);
+  if (keyEl) { keyEl.style.cursor = 'pointer'; keyEl.addEventListener('click', doToggle); }
 }
 
 function buildJsonTree(container, data) {
@@ -397,7 +412,7 @@ function renderDetail(r) {
         </div>
         <div class="tok-meta">
           Model: ${esc(r.model)}<br>
-          Duration: ${r.durationMs != null ? r.durationMs+'ms' : 'in progress'}<br>
+          Duration: ${r.durationMs != null ? fmtDuration(r.durationMs) : 'in progress'}<br>
           Status: ${r.status}<br>
           Time: ${new Date(r.timestamp).toLocaleString()}
         </div>
@@ -533,6 +548,11 @@ function connect() {
 
 ['q','mf','sf'].forEach(id => document.getElementById(id).addEventListener('input', renderList));
 document.getElementById('sf').addEventListener('change', renderList);
+
+// load version
+fetch('/api/version').then(r=>r.json()).then(d => {
+  document.getElementById('app-version').textContent = 'v' + d.version;
+});
 
 // load current upstream
 fetch('/api/config').then(r=>r.json()).then(d => {
