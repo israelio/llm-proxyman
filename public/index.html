@@ -52,9 +52,16 @@ pre{background:#181818;border:1px solid #2a2a2a;padding:12px;border-radius:4px;f
 .tok-card .val{font-size:28px;font-weight:700;color:#4a9eff}
 .tok-card .lbl{font-size:11px;color:#555;margin-top:4px}
 .tok-meta{font-size:12px;color:#666;line-height:1.8}
-.copy-btn{float:right;font-size:10px;padding:2px 6px;background:#252525;border:1px solid #3a3a3a;color:#888;border-radius:3px;cursor:pointer;margin-top:-2px}
+.copy-btn{font-size:10px;padding:2px 6px;background:#252525;border:1px solid #3a3a3a;color:#888;border-radius:3px;cursor:pointer}
 .copy-btn:hover{color:#d4d4d4}
-.req-detail-header{font-size:11px;color:#555;margin-bottom:8px}
+.req-detail-header{font-size:11px;color:#555}
+.pane-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:6px}
+.pane-hdr-left{flex:1;font-size:11px;color:#555}
+.pane-actions{display:flex;gap:4px}
+.toggle-btn{font-size:10px;padding:2px 8px;background:#252525;border:1px solid #3a3a3a;color:#888;border-radius:3px;cursor:pointer}
+.toggle-btn:hover{color:#d4d4d4;border-color:#555}
+.toggle-btn.on{color:#4a9eff;border-color:#3a6aaa;background:#1a2a3a}
+.j-k{color:#9cdcfe}.j-s{color:#ce9178}.j-n{color:#b5cea8}.j-b{color:#569cd6}.j-nl{color:#569cd6}
 </style>
 </head>
 <body>
@@ -90,6 +97,38 @@ pre{background:#181818;border:1px solid #2a2a2a;padding:12px;border-radius:4px;f
 const records = {};
 const streaming = {};
 let sel = null;
+let prettyMode = true;
+
+function syntaxHighlight(obj) {
+  const str = JSON.stringify(obj, null, 2);
+  return str.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, match => {
+    let cls = 'n';
+    if (/^"/.test(match)) cls = /:$/.test(match) ? 'k' : 's';
+    else if (/true|false/.test(match)) cls = 'b';
+    else if (/null/.test(match)) cls = 'nl';
+    return `<span class="j-${cls}">${esc(match)}</span>`;
+  });
+}
+
+function renderJson(data) {
+  if (!prettyMode) {
+    const raw = typeof data === 'string' ? data : JSON.stringify(data);
+    return `<pre>${esc(raw)}</pre>`;
+  }
+  try {
+    const obj = typeof data === 'string' ? JSON.parse(data) : data;
+    if (obj == null) return `<pre>${esc(String(data))}</pre>`;
+    return `<pre>${syntaxHighlight(obj)}</pre>`;
+  } catch {
+    const raw = typeof data === 'string' ? data : JSON.stringify(data);
+    return `<pre>${esc(raw)}</pre>`;
+  }
+}
+
+function togglePretty() {
+  prettyMode = !prettyMode;
+  if (sel) renderDetail(records[sel]);
+}
 
 function esc(s) {
   if (s == null) return '';
@@ -179,8 +218,13 @@ function renderDetail(r) {
     </div>
     <div class="tab-body">
       <div id="pane-request" class="pane${tab==='request'?' active':''}">
-        <div class="req-detail-header">${esc(r.method)} ${esc(r.path)} &middot; ${fmt(r.timestamp)}</div>
-        <pre>${esc(JSON.stringify(r.request,null,2))}</pre>
+        <div class="pane-hdr">
+          <span class="pane-hdr-left">${esc(r.method)} ${esc(r.path)} &middot; ${fmt(r.timestamp)}</span>
+          <div class="pane-actions">
+            <button class="toggle-btn${prettyMode?' on':''}" onclick="togglePretty()">${prettyMode?'Raw':'Pretty'}</button>
+          </div>
+        </div>
+        ${renderJson(r.request)}
       </div>
       <div id="pane-response" class="pane${tab==='response'?' active':''}">
         ${isLive
@@ -204,8 +248,14 @@ function renderDetail(r) {
         </div>
       </div>
       <div id="pane-raw" class="pane${tab==='raw'?' active':''}">
-        <button class="copy-btn" onclick="copyRaw()">Copy</button>
-        <pre id="raw-pre">${esc(JSON.stringify({request:r.request,response:r.response,chunks:r.chunks,usage:r.usage},null,2))}</pre>
+        <div class="pane-hdr">
+          <span class="pane-hdr-left"></span>
+          <div class="pane-actions">
+            <button class="toggle-btn${prettyMode?' on':''}" onclick="togglePretty()">${prettyMode?'Raw':'Pretty'}</button>
+            <button class="copy-btn" onclick="copyRaw()">Copy</button>
+          </div>
+        </div>
+        <div id="raw-pre">${renderJson({request:r.request,response:r.response,chunks:r.chunks,usage:r.usage})}</div>
       </div>
     </div>`;
 }
