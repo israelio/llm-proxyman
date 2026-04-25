@@ -19,6 +19,8 @@ body{font-family:'SF Mono',Monaco,monospace;background:#111;color:#d4d4d4;height
 .btn.danger:hover{background:#2a1111}
 .btn.primary{border-color:#3a6aaa;color:#4a9eff}
 .btn.primary:hover{background:#1a2a3a}
+.btn.on{border-color:#4ec94e;color:#4ec94e;background:#0a1a0a}
+.btn.on:hover{background:#0f2a0f}
 #app-title{font-size:13px;font-weight:600;color:#c0c0c0;white-space:nowrap;flex-shrink:0}
 .sep{width:1px;background:#2a2a2a;height:20px;flex-shrink:0}
 .conn{margin-left:auto;font-size:11px;white-space:nowrap}
@@ -94,10 +96,11 @@ pre{background:#181818;border:1px solid #2a2a2a;padding:12px;border-radius:4px;f
   <button class="btn" onclick="doExport('csv')">Export CSV</button>
   <button class="btn danger" onclick="doClear()">Clear</button>
   <div class="sep"></div>
-  <input id="upstream-input" type="text" placeholder="Upstream URL">
+  <button class="btn" id="btn-auto" onclick="setMode('auto')">Auto</button>
+  <button class="btn" id="btn-anthropic" onclick="setMode('anthropic')">Anthropic</button>
+  <button class="btn" id="btn-local" onclick="setMode('local')">Local LLM</button>
+  <input id="upstream-input" type="text" placeholder="Custom URL">
   <button class="btn primary" onclick="setUpstream()">Set</button>
-  <button class="btn" onclick="setUpstreamPreset('https://api.anthropic.com')" title="Anthropic API">Anthropic</button>
-  <button class="btn" onclick="setUpstreamPreset('http://127.0.0.1:8001')" title="Local LLM">Local LLM</button>
   <span id="cs" class="conn off">&#9679; Disconnected</span>
 </div>
 <div class="main">
@@ -453,29 +456,45 @@ function copyRaw() {
   )).catch(()=>{});
 }
 
-// ── upstream switcher ─────────────────────────────────────────────────────────
+// ── upstream / mode switcher ──────────────────────────────────────────────────
 
-function setUpstream() {
-  const val = document.getElementById('upstream-input').value.trim();
-  if (!val) return;
-  fetch('/api/config', {
+function applyConfig(cfg) {
+  if (cfg.upstreamUrl) document.getElementById('upstream-input').value = cfg.upstreamUrl;
+  const isAuto = cfg.mode === 'auto';
+  const isAnthropicManual = cfg.mode === 'manual' && cfg.upstreamUrl === 'https://api.anthropic.com';
+  const isLocalManual = cfg.mode === 'manual' && cfg.upstreamUrl === 'http://127.0.0.1:8001';
+  document.getElementById('btn-auto').classList.toggle('on', isAuto);
+  document.getElementById('btn-anthropic').classList.toggle('on', isAnthropicManual);
+  document.getElementById('btn-local').classList.toggle('on', isLocalManual);
+}
+
+function putConfig(body) {
+  return fetch('/api/config', {
     method: 'PUT',
     headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({upstreamUrl: val}),
+    body: JSON.stringify(body),
   })
     .then(r => r.json().then(d => ({ ok: r.ok, status: r.status, d })))
     .then(({ ok, status, d }) => {
       if (!ok) { alert(d.error || `Server error ${status}`); return; }
-      document.getElementById('upstream-input').value = d.upstreamUrl;
-      document.getElementById('upstream-input').style.borderColor = '#4ec94e';
-      setTimeout(() => document.getElementById('upstream-input').style.borderColor = '', 1500);
+      applyConfig(d);
+      const input = document.getElementById('upstream-input');
+      input.style.borderColor = '#4ec94e';
+      setTimeout(() => input.style.borderColor = '', 1500);
     })
-    .catch(err => alert('Failed to update upstream: ' + err.message));
+    .catch(err => alert('Failed: ' + err.message));
 }
 
-function setUpstreamPreset(url) {
-  document.getElementById('upstream-input').value = url;
-  setUpstream();
+function setUpstream() {
+  const val = document.getElementById('upstream-input').value.trim();
+  if (!val) return;
+  putConfig({ mode: 'manual', upstreamUrl: val });
+}
+
+function setMode(mode) {
+  if (mode === 'auto') return putConfig({ mode: 'auto' });
+  if (mode === 'anthropic') return putConfig({ mode: 'manual', upstreamUrl: 'https://api.anthropic.com' });
+  if (mode === 'local') return putConfig({ mode: 'manual', upstreamUrl: 'http://127.0.0.1:8001' });
 }
 
 document.getElementById('upstream-input').addEventListener('keydown', e => {
@@ -562,10 +581,8 @@ fetch('/api/version').then(r=>r.json()).then(d => {
   document.getElementById('app-version').textContent = 'v' + d.version;
 });
 
-// load current upstream
-fetch('/api/config').then(r=>r.json()).then(d => {
-  document.getElementById('upstream-input').value = d.upstreamUrl || '';
-});
+// load current config (mode + upstream)
+fetch('/api/config').then(r=>r.json()).then(applyConfig);
 
 // load history; reconstruct streaming text from stored chunks
 fetch('/api/requests')

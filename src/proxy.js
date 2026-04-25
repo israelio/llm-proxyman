@@ -53,11 +53,17 @@ function extractUsageFields(u) {
   };
 }
 
+const ANTHROPIC_URL = 'https://api.anthropic.com';
+const ANTHROPIC_MODEL_RE = /sonnet|opus|haiku/i;
+
+function resolveUpstreamUrl(model, overrideUrl) {
+  if (overrideUrl) return overrideUrl;
+  if (config.mode === 'auto' && ANTHROPIC_MODEL_RE.test(model || '')) return ANTHROPIC_URL;
+  return config.upstreamUrl;
+}
+
 function createProxyMiddleware(overrideUrl) {
   return function proxyMiddleware(req, res) {
-    const upstream = new URL(overrideUrl || config.upstreamUrl);
-    const isHttps = upstream.protocol === 'https:';
-    const transport = isHttps ? https : http;
     const bodyChunks = [];
     req.on('data', c => bodyChunks.push(c));
     req.on('end', () => {
@@ -70,10 +76,15 @@ function createProxyMiddleware(overrideUrl) {
         model = requestBody.model || 'unknown';
       } catch {}
 
+      const upstream = new URL(resolveUpstreamUrl(model, overrideUrl));
+      const isHttps = upstream.protocol === 'https:';
+      const transport = isHttps ? https : http;
+
       const record = store.add({
         method: req.method,
         path: req.path || req.url,
         model,
+        upstream: upstream.origin,
         request: requestBody || rawBody.toString(),
       });
 

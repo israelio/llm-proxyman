@@ -52,21 +52,30 @@ router.get('/version', (req, res) => {
 });
 
 router.get('/config', (req, res) => {
-  res.json({ upstreamUrl: config.upstreamUrl });
+  res.json({ mode: config.mode, upstreamUrl: config.upstreamUrl });
 });
 
 router.put('/config', (req, res) => {
-  const { upstreamUrl } = req.body || {};
-  if (!upstreamUrl || typeof upstreamUrl !== 'string') {
-    return res.status(400).json({ error: 'upstreamUrl required' });
+  const { upstreamUrl, mode } = req.body || {};
+
+  if (mode !== undefined) {
+    if (!['auto', 'manual'].includes(mode)) {
+      return res.status(400).json({ error: 'mode must be "auto" or "manual"' });
+    }
+    config.mode = mode;
   }
-  try {
-    new URL(upstreamUrl); // validate
-  } catch {
-    return res.status(400).json({ error: 'invalid URL' });
+
+  if (upstreamUrl !== undefined) {
+    if (typeof upstreamUrl !== 'string') {
+      return res.status(400).json({ error: 'upstreamUrl must be a string' });
+    }
+    try { new URL(upstreamUrl); } catch {
+      return res.status(400).json({ error: 'invalid URL' });
+    }
+    config.upstreamUrl = upstreamUrl;
   }
-  config.upstreamUrl = upstreamUrl;
-  res.json({ upstreamUrl: config.upstreamUrl });
+
+  res.json({ mode: config.mode, upstreamUrl: config.upstreamUrl });
 });
 
 module.exports = router;
