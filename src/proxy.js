@@ -58,6 +58,7 @@ const ANTHROPIC_MODEL_RE = /sonnet|opus|haiku/i;
 
 function resolveUpstreamUrl(model, overrideUrl) {
   if (overrideUrl) return overrideUrl;
+  if (config.mode === 'anthropic') return ANTHROPIC_URL;
   if (config.mode === 'auto' && ANTHROPIC_MODEL_RE.test(model || '')) return ANTHROPIC_URL;
   return config.upstreamUrl;
 }

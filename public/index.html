@@ -460,12 +460,12 @@ function copyRaw() {
 
 function applyConfig(cfg) {
   if (cfg.upstreamUrl) document.getElementById('upstream-input').value = cfg.upstreamUrl;
-  const isAuto = cfg.mode === 'auto';
-  const isAnthropicManual = cfg.mode === 'manual' && cfg.upstreamUrl === 'https://api.anthropic.com';
-  const isLocalManual = cfg.mode === 'manual' && cfg.upstreamUrl === 'http://127.0.0.1:8001';
-  document.getElementById('btn-auto').classList.toggle('on', isAuto);
-  document.getElementById('btn-anthropic').classList.toggle('on', isAnthropicManual);
-  document.getElementById('btn-local').classList.toggle('on', isLocalManual);
+  const input = document.getElementById('upstream-input');
+  input.disabled = cfg.mode === 'anthropic';
+  input.style.opacity = cfg.mode === 'anthropic' ? '0.35' : '';
+  document.getElementById('btn-auto').classList.toggle('on', cfg.mode === 'auto');
+  document.getElementById('btn-anthropic').classList.toggle('on', cfg.mode === 'anthropic');
+  document.getElementById('btn-local').classList.toggle('on', cfg.mode === 'local');
 }
 
 function putConfig(body) {
@@ -488,13 +488,12 @@ function putConfig(body) {
 function setUpstream() {
   const val = document.getElementById('upstream-input').value.trim();
   if (!val) return;
-  putConfig({ mode: 'manual', upstreamUrl: val });
+  putConfig({ mode: 'local', upstreamUrl: val });
 }
 
 function setMode(mode) {
-  if (mode === 'auto') return putConfig({ mode: 'auto' });
-  if (mode === 'anthropic') return putConfig({ mode: 'manual', upstreamUrl: 'https://api.anthropic.com' });
-  if (mode === 'local') return putConfig({ mode: 'manual', upstreamUrl: 'http://127.0.0.1:8001' });
+  // 'anthropic' only changes the mode — upstreamUrl is preserved as the local LLM URL
+  putConfig({ mode });
 }
 
 document.getElementById('upstream-input').addEventListener('keydown', e => {

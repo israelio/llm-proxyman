@@ -59,8 +59,8 @@ router.put('/config', (req, res) => {
   const { upstreamUrl, mode } = req.body || {};
 
   if (mode !== undefined) {
-    if (!['auto', 'manual'].includes(mode)) {
-      return res.status(400).json({ error: 'mode must be "auto" or "manual"' });
+    if (!['auto', 'anthropic', 'local'].includes(mode)) {
+      return res.status(400).json({ error: 'mode must be "auto", "anthropic", or "local"' });
     }
     config.mode = mode;
   }
