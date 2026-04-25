@@ -56,7 +56,7 @@ router.get('/config', (req, res) => {
 });
 
 router.put('/config', (req, res) => {
-  const { upstreamUrl } = req.body;
+  const { upstreamUrl } = req.body || {};
   if (!upstreamUrl || typeof upstreamUrl !== 'string') {
     return res.status(400).json({ error: 'upstreamUrl required' });
   }

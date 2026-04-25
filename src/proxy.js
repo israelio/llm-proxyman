@@ -88,6 +88,7 @@ function createProxyMiddleware(overrideUrl) {
           ...req.headers,
           host: upstream.host,
           'content-length': rawBody.length,
+          'accept-encoding': 'identity', // disable compression so response is human-readable
         },
       };
 

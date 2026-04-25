@@ -461,14 +461,14 @@ function setUpstream() {
     headers: {'Content-Type':'application/json'},
     body: JSON.stringify({upstreamUrl: val}),
   })
-    .then(r => r.json())
-    .then(d => {
-      if (d.error) { alert(d.error); return; }
+    .then(r => r.json().then(d => ({ ok: r.ok, status: r.status, d })))
+    .then(({ ok, status, d }) => {
+      if (!ok) { alert(d.error || `Server error ${status}`); return; }
       document.getElementById('upstream-input').value = d.upstreamUrl;
       document.getElementById('upstream-input').style.borderColor = '#4ec94e';
       setTimeout(() => document.getElementById('upstream-input').style.borderColor = '', 1500);
     })
-    .catch(() => alert('Failed to update upstream'));
+    .catch(err => alert('Failed to update upstream: ' + err.message));
 }
 
 document.getElementById('upstream-input').addEventListener('keydown', e => {
