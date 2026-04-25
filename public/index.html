@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Local Proxy</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'SF Mono',Monaco,monospace;background:#111;color:#d4d4d4;height:100vh;display:flex;flex-direction:column;overflow:hidden;font-size:13px}
+.toolbar{display:flex;gap:8px;padding:8px 12px;background:#1a1a1a;border-bottom:1px solid #2a2a2a;align-items:center;flex-wrap:wrap}
+.toolbar input,.toolbar select{background:#252525;border:1px solid #3a3a3a;color:#d4d4d4;padding:4px 8px;border-radius:4px;font-family:inherit;font-size:12px}
+.toolbar input{width:180px}
+.toolbar input:focus,.toolbar select:focus{outline:none;border-color:#4a9eff}
+.btn{background:#252525;border:1px solid #3a3a3a;color:#d4d4d4;padding:4px 10px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px}
+.btn:hover{background:#2f2f2f;border-color:#555}
+.btn.danger{border-color:#5a2222;color:#ff6b6b}
+.btn.danger:hover{background:#2a1111}
+.conn{margin-left:auto;font-size:11px}
+.conn.on{color:#4ec94e}
+.conn.off{color:#ff6b6b}
+.main{display:flex;flex:1;overflow:hidden}
+.list-panel{width:300px;min-width:220px;border-right:1px solid #2a2a2a;display:flex;flex-direction:column;overflow:hidden}
+.list-head{padding:6px 12px;font-size:11px;color:#666;border-bottom:1px solid #2a2a2a;display:flex;justify-content:space-between}
+.req-list{flex:1;overflow-y:auto}
+.req-item{padding:8px 12px;border-bottom:1px solid #1e1e1e;cursor:pointer;user-select:none}
+.req-item:hover{background:#1a1a1a}
+.req-item.active{background:#1e2a3a}
+.req-item .model{font-size:12px;font-weight:600;color:#e0e0e0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.req-item .meta{font-size:11px;color:#555;margin-top:2px;display:flex;gap:6px;align-items:center}
+.badge{display:inline-block;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:600}
+.badge.pending{background:#2a2a00;color:#cccc00}
+.badge.streaming{background:#002a12;color:#33dd77;animation:pulse 1s infinite}
+.badge.complete{background:#001a2a;color:#4499ff}
+.badge.error{background:#2a0000;color:#ff5555}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.stats-bar{padding:6px 12px;font-size:11px;color:#555;border-top:1px solid #2a2a2a}
+.detail-panel{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.empty{flex:1;display:flex;align-items:center;justify-content:center;color:#333;font-size:13px}
+.tabs{display:flex;padding:0 12px;border-bottom:1px solid #2a2a2a;background:#161616;flex-shrink:0}
+.tab{padding:8px 14px;cursor:pointer;font-size:12px;color:#666;border-bottom:2px solid transparent}
+.tab:hover{color:#aaa}
+.tab.active{color:#d4d4d4;border-bottom-color:#4a9eff}
+.tab-body{flex:1;overflow-y:auto;padding:12px}
+.pane{display:none}
+.pane.active{display:block}
+pre{background:#181818;border:1px solid #2a2a2a;padding:12px;border-radius:4px;font-size:12px;overflow-x:auto;white-space:pre-wrap;word-break:break-all;line-height:1.5}
+.stream-box{background:#181818;border:1px solid #2a2a2a;padding:12px;border-radius:4px;font-size:12px;min-height:80px;white-space:pre-wrap;word-break:break-all;line-height:1.5}
+.stream-cursor{display:inline-block;width:8px;height:13px;background:#4a9eff;animation:blink .7s step-end infinite;vertical-align:text-bottom}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+.tok-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+.tok-card{background:#181818;border:1px solid #2a2a2a;border-radius:4px;padding:14px;text-align:center}
+.tok-card .val{font-size:28px;font-weight:700;color:#4a9eff}
+.tok-card .lbl{font-size:11px;color:#555;margin-top:4px}
+.tok-meta{font-size:12px;color:#666;line-height:1.8}
+.copy-btn{float:right;font-size:10px;padding:2px 6px;background:#252525;border:1px solid #3a3a3a;color:#888;border-radius:3px;cursor:pointer;margin-top:-2px}
+.copy-btn:hover{color:#d4d4d4}
+.req-detail-header{font-size:11px;color:#555;margin-bottom:8px}
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <input id="q" type="text" placeholder="Search messages...">
+  <select id="mf"><option value="">All models</option></select>
+  <select id="sf">
+    <option value="">All status</option>
+    <option value="complete">Complete</option>
+    <option value="streaming">Streaming</option>
+    <option value="error">Error</option>
+    <option value="pending">Pending</option>
+  </select>
+  <button class="btn" onclick="doExport('json')">Export JSON</button>
+  <button class="btn" onclick="doExport('csv')">Export CSV</button>
+  <button class="btn danger" onclick="doClear()">Clear</button>
+  <span id="cs" class="conn off">&#9679; Disconnected</span>
+</div>
+<div class="main">
+  <div class="list-panel">
+    <div class="list-head">
+      <span id="rc">0 requests</span>
+      <span id="st">0 tokens</span>
+    </div>
+    <div class="req-list" id="rl"></div>
+    <div class="stats-bar" id="sb">In: 0 &middot; Out: 0 &middot; Total: 0</div>
+  </div>
+  <div class="detail-panel" id="dp">
+    <div class="empty">Select a request to inspect</div>
+  </div>
+</div>
+<script>
+const records = {};
+const streaming = {};
+let sel = null;
+
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function fmt(ts) {
+  return new Date(ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+
+function extractText(chunk) {
+  let out = '';
+  for (const line of chunk.split('\n')) {
+    if (!line.startsWith('data: ') || line === 'data: [DONE]') continue;
+    try {
+      const j = JSON.parse(line.slice(6));
+      if (j.choices?.[0]?.delta?.content) out += j.choices[0].delta.content;
+      else if (j.delta?.text) out += j.delta.text;
+      else if (j.type === 'content_block_delta' && j.delta?.text) out += j.delta.text;
+    } catch {}
+  }
+  return out;
+}
+
+function filteredRecords() {
+  const q = document.getElementById('q').value.toLowerCase();
+  const mf = document.getElementById('mf').value;
+  const sf = document.getElementById('sf').value;
+  return Object.values(records)
+    .filter(r => !mf || r.model === mf)
+    .filter(r => !sf || r.status === sf)
+    .filter(r => !q || JSON.stringify(r.request).toLowerCase().includes(q) || JSON.stringify(r.response||'').toLowerCase().includes(q))
+    .sort((a,b) => b.timestamp.localeCompare(a.timestamp));
+}
+
+function renderList() {
+  const fr = filteredRecords();
+  document.getElementById('rl').innerHTML = fr.map(r => `
+    <div class="req-item${r.id===sel?' active':''}" onclick="pick('${r.id}')">
+      <div class="model">${esc(r.model)}</div>
+      <div class="meta">
+        <span class="badge ${r.status}">${r.status}</span>
+        <span>${fmt(r.timestamp)}</span>
+        <span>${r.durationMs != null ? r.durationMs+'ms' : '&hellip;'}</span>
+        <span>${r.usage?.totalTokens||0}t</span>
+      </div>
+    </div>`).join('');
+  document.getElementById('rc').textContent = `${fr.length} requests`;
+
+  const mf = document.getElementById('mf');
+  const cur = mf.value;
+  const models = [...new Set(Object.values(records).map(r=>r.model))].filter(Boolean);
+  mf.innerHTML = '<option value="">All models</option>' + models.map(m=>`<option${m===cur?' selected':''}>${esc(m)}</option>`).join('');
+
+  updateStats();
+}
+
+function updateStats() {
+  const all = Object.values(records);
+  const inp = all.reduce((s,r)=>s+(r.usage?.inputTokens||0),0);
+  const out = all.reduce((s,r)=>s+(r.usage?.outputTokens||0),0);
+  document.getElementById('sb').textContent = `In: ${inp} \u00b7 Out: ${out} \u00b7 Total: ${inp+out}`;
+  document.getElementById('st').textContent = `${inp+out} tokens`;
+}
+
+function pick(id) {
+  sel = id;
+  renderList();
+  renderDetail(records[id]);
+}
+
+function activeTab() {
+  return document.querySelector('#dp .tab.active')?.dataset.tab || 'response';
+}
+
+function renderDetail(r) {
+  const tab = activeTab();
+  const isLive = r.status === 'pending' || r.status === 'streaming';
+  const liveContent = streaming[r.id] || '';
+  const dp = document.getElementById('dp');
+  dp.innerHTML = `
+    <div class="tabs">
+      <div class="tab${tab==='request'?' active':''}" data-tab="request" onclick="switchTab('request')">Request</div>
+      <div class="tab${tab==='response'?' active':''}" data-tab="response" onclick="switchTab('response')">Response</div>
+      <div class="tab${tab==='tokens'?' active':''}" data-tab="tokens" onclick="switchTab('tokens')">Tokens</div>
+      <div class="tab${tab==='raw'?' active':''}" data-tab="raw" onclick="switchTab('raw')">Raw</div>
+    </div>
+    <div class="tab-body">
+      <div id="pane-request" class="pane${tab==='request'?' active':''}">
+        <div class="req-detail-header">${esc(r.method)} ${esc(r.path)} &middot; ${fmt(r.timestamp)}</div>
+        <pre>${esc(JSON.stringify(r.request,null,2))}</pre>
+      </div>
+      <div id="pane-response" class="pane${tab==='response'?' active':''}">
+        ${isLive
+          ? `<div class="stream-box" id="sb-live">${esc(liveContent)}<span class="stream-cursor"></span></div>`
+          : r.status === 'error'
+            ? `<pre style="color:#ff5555">${esc(r.error||'Unknown error')}</pre>`
+            : `<pre>${esc(liveContent || JSON.stringify(r.response,null,2))}</pre>`
+        }
+      </div>
+      <div id="pane-tokens" class="pane${tab==='tokens'?' active':''}">
+        <div class="tok-grid">
+          <div class="tok-card"><div class="val">${r.usage?.inputTokens||0}</div><div class="lbl">Input Tokens</div></div>
+          <div class="tok-card"><div class="val">${r.usage?.outputTokens||0}</div><div class="lbl">Output Tokens</div></div>
+          <div class="tok-card"><div class="val">${r.usage?.totalTokens||0}</div><div class="lbl">Total Tokens</div></div>
+        </div>
+        <div class="tok-meta">
+          Model: ${esc(r.model)}<br>
+          Duration: ${r.durationMs != null ? r.durationMs+'ms' : 'in progress'}<br>
+          Status: ${r.status}<br>
+          Time: ${new Date(r.timestamp).toLocaleString()}
+        </div>
+      </div>
+      <div id="pane-raw" class="pane${tab==='raw'?' active':''}">
+        <button class="copy-btn" onclick="copyRaw()">Copy</button>
+        <pre id="raw-pre">${esc(JSON.stringify({request:r.request,response:r.response,chunks:r.chunks,usage:r.usage},null,2))}</pre>
+      </div>
+    </div>`;
+}
+
+function updateLive() {
+  const el = document.getElementById('sb-live');
+  if (el && sel) {
+    el.innerHTML = esc(streaming[sel]||'') + '<span class="stream-cursor"></span>';
+  }
+}
+
+function switchTab(tab) {
+  document.querySelectorAll('#dp .tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
+  document.querySelectorAll('#dp .pane').forEach(p=>p.classList.toggle('active',p.id===`pane-${tab}`));
+}
+
+function copyRaw() {
+  const el = document.getElementById('raw-pre');
+  if (el) navigator.clipboard.writeText(el.textContent).catch(()=>{});
+}
+
+function doExport(fmt) {
+  const q = document.getElementById('q').value;
+  const mf = document.getElementById('mf').value;
+  const sf = document.getElementById('sf').value;
+  const p = new URLSearchParams({format:fmt});
+  if (q) p.set('search',q);
+  if (mf) p.set('model',mf);
+  if (sf) p.set('status',sf);
+  window.location.href = `/api/export?${p}`;
+}
+
+function doClear() {
+  if (!confirm('Clear all request history?')) return;
+  fetch('/api/requests',{method:'DELETE'}).then(()=>{
+    Object.keys(records).forEach(k=>delete records[k]);
+    Object.keys(streaming).forEach(k=>delete streaming[k]);
+    sel = null;
+    renderList();
+    document.getElementById('dp').innerHTML = '<div class="empty">Select a request to inspect</div>';
+  });
+}
+
+let es;
+function connect() {
+  es = new EventSource('/events');
+  es.onopen = () => {
+    document.getElementById('cs').textContent = '\u25cf Connected';
+    document.getElementById('cs').className = 'conn on';
+  };
+  es.onerror = () => {
+    document.getElementById('cs').textContent = '\u25cf Disconnected';
+    document.getElementById('cs').className = 'conn off';
+    setTimeout(connect, 3000);
+  };
+
+  es.addEventListener('request:start', e => {
+    const r = JSON.parse(e.data);
+    records[r.id] = r;
+    streaming[r.id] = '';
+    renderList();
+  });
+
+  es.addEventListener('request:chunk', e => {
+    const {id, chunk} = JSON.parse(e.data);
+    if (records[id]) records[id].status = 'streaming';
+    streaming[id] = (streaming[id]||'') + extractText(chunk);
+    if (sel === id) updateLive();
+    else renderList();
+  });
+
+  es.addEventListener('request:complete', e => {
+    const r = JSON.parse(e.data);
+    records[r.id] = r;
+    renderList();
+    if (sel === r.id) renderDetail(r);
+  });
+
+  es.addEventListener('request:error', e => {
+    const r = JSON.parse(e.data);
+    records[r.id] = r;
+    renderList();
+    if (sel === r.id) renderDetail(r);
+  });
+}
+
+['q','mf','sf'].forEach(id => document.getElementById(id).addEventListener('input', renderList));
+document.getElementById('sf').addEventListener('change', renderList);
+
+fetch('/api/requests')
+  .then(r=>r.json())
+  .then(data => {
+    data.forEach(r => { records[r.id] = r; streaming[r.id] = ''; });
+    renderList();
+  });
+
+connect();
+</script>
+</body>
+</html>
