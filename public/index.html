@@ -503,6 +503,7 @@ function doClear() {
 
 let es;
 function connect() {
+  if (es) es.close();
   es = new EventSource('/events');
   es.onopen = () => {
     document.getElementById('cs').textContent = '\u25cf Connected';
