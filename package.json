@@ -6,16 +6,13 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "test": "node --test tests/store.test.js tests/sse.test.js tests/api.test.js tests/proxy.test.js"
+    "test": "node --test tests/store.test.js tests/sse.test.js tests/api.test.js tests/proxy.test.js tests/sqlite.test.js"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
     "express": "^4.19.2"
   },
-  "optionalDependencies": {
-    "better-sqlite3": "^9.4.3"
-  },
-  "devDependencies": {
+"devDependencies": {
     "supertest": "^7.0.0"
   }
 }
