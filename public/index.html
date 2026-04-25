@@ -43,25 +43,42 @@ body{font-family:'SF Mono',Monaco,monospace;background:#111;color:#d4d4d4;height
 .tab-body{flex:1;overflow-y:auto;padding:12px}
 .pane{display:none}
 .pane.active{display:block}
-pre{background:#181818;border:1px solid #2a2a2a;padding:12px;border-radius:4px;font-size:12px;overflow-x:auto;white-space:pre-wrap;word-break:break-all;line-height:1.5}
+/* pane header with actions */
+.pane-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:6px;min-height:20px}
+.pane-hdr-left{flex:1;font-size:11px;color:#555}
+.pane-actions{display:flex;gap:4px;flex-shrink:0}
+.toggle-btn{font-size:10px;padding:2px 8px;background:#252525;border:1px solid #3a3a3a;color:#888;border-radius:3px;cursor:pointer;font-family:inherit}
+.toggle-btn:hover{color:#d4d4d4;border-color:#555}
+.toggle-btn.on{color:#4a9eff;border-color:#3a6aaa;background:#1a2a3a}
+.copy-btn{font-size:10px;padding:2px 8px;background:#252525;border:1px solid #3a3a3a;color:#888;border-radius:3px;cursor:pointer;font-family:inherit}
+.copy-btn:hover{color:#d4d4d4}
+/* plain pre blocks */
+pre{background:#181818;border:1px solid #2a2a2a;padding:12px;border-radius:4px;font-size:12px;overflow-x:auto;white-space:pre-wrap;word-break:break-all;line-height:1.6}
+/* streaming live box */
 .stream-box{background:#181818;border:1px solid #2a2a2a;padding:12px;border-radius:4px;font-size:12px;min-height:80px;white-space:pre-wrap;word-break:break-all;line-height:1.5}
 .stream-cursor{display:inline-block;width:8px;height:13px;background:#4a9eff;animation:blink .7s step-end infinite;vertical-align:text-bottom}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+/* token cards */
 .tok-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
 .tok-card{background:#181818;border:1px solid #2a2a2a;border-radius:4px;padding:14px;text-align:center}
 .tok-card .val{font-size:28px;font-weight:700;color:#4a9eff}
 .tok-card .lbl{font-size:11px;color:#555;margin-top:4px}
 .tok-meta{font-size:12px;color:#666;line-height:1.8}
-.copy-btn{font-size:10px;padding:2px 6px;background:#252525;border:1px solid #3a3a3a;color:#888;border-radius:3px;cursor:pointer}
-.copy-btn:hover{color:#d4d4d4}
-.req-detail-header{font-size:11px;color:#555}
-.pane-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:6px}
-.pane-hdr-left{flex:1;font-size:11px;color:#555}
-.pane-actions{display:flex;gap:4px}
-.toggle-btn{font-size:10px;padding:2px 8px;background:#252525;border:1px solid #3a3a3a;color:#888;border-radius:3px;cursor:pointer}
-.toggle-btn:hover{color:#d4d4d4;border-color:#555}
-.toggle-btn.on{color:#4a9eff;border-color:#3a6aaa;background:#1a2a3a}
-.j-k{color:#9cdcfe}.j-s{color:#ce9178}.j-n{color:#b5cea8}.j-b{color:#569cd6}.j-nl{color:#569cd6}
+/* JSON syntax colours */
+.j-k{color:#9cdcfe}
+.j-s{color:#ce9178}
+.j-n{color:#b5cea8}
+.j-b{color:#569cd6}
+.j-nl{color:#569cd6}
+.j-idx{color:#555;font-size:11px}
+/* collapsible tree */
+.j-tree{background:#181818;border:1px solid #2a2a2a;padding:12px;border-radius:4px;font-size:12px;line-height:1.7;overflow-x:auto;tab-size:2}
+.j-tree div{white-space:nowrap}
+.j-toggle{display:inline-block;width:14px;text-align:center;font-size:10px;color:#555;cursor:pointer;user-select:none;flex-shrink:0}
+.j-toggle:hover{color:#aaa}
+.j-summary{color:#555;font-size:11px;font-style:italic;cursor:pointer}
+.j-summary:hover{color:#888}
+.j-children{padding-left:20px;border-left:1px solid #222}
 </style>
 </head>
 <body>
@@ -99,36 +116,7 @@ const streaming = {};
 let sel = null;
 let prettyMode = true;
 
-function syntaxHighlight(obj) {
-  const str = JSON.stringify(obj, null, 2);
-  return str.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, match => {
-    let cls = 'n';
-    if (/^"/.test(match)) cls = /:$/.test(match) ? 'k' : 's';
-    else if (/true|false/.test(match)) cls = 'b';
-    else if (/null/.test(match)) cls = 'nl';
-    return `<span class="j-${cls}">${esc(match)}</span>`;
-  });
-}
-
-function renderJson(data) {
-  if (!prettyMode) {
-    const raw = typeof data === 'string' ? data : JSON.stringify(data);
-    return `<pre>${esc(raw)}</pre>`;
-  }
-  try {
-    const obj = typeof data === 'string' ? JSON.parse(data) : data;
-    if (obj == null) return `<pre>${esc(String(data))}</pre>`;
-    return `<pre>${syntaxHighlight(obj)}</pre>`;
-  } catch {
-    const raw = typeof data === 'string' ? data : JSON.stringify(data);
-    return `<pre>${esc(raw)}</pre>`;
-  }
-}
-
-function togglePretty() {
-  prettyMode = !prettyMode;
-  if (sel) renderDetail(records[sel]);
-}
+// ── helpers ──────────────────────────────────────────────────────────────────
 
 function esc(s) {
   if (s == null) return '';
@@ -136,7 +124,7 @@ function esc(s) {
 }
 
 function fmt(ts) {
-  return new Date(ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  return new Date(ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
 }
 
 function extractText(chunk) {
@@ -152,6 +140,155 @@ function extractText(chunk) {
   }
   return out;
 }
+
+// ── collapsible JSON tree ─────────────────────────────────────────────────────
+
+function renderNodeInto(parent, data, key) {
+  const row = document.createElement('div');
+
+  // key label
+  if (key !== null) {
+    const k = document.createElement('span');
+    if (typeof key === 'number') {
+      k.className = 'j-idx';
+      k.textContent = key;
+    } else {
+      k.className = 'j-k';
+      k.textContent = JSON.stringify(key);
+    }
+    row.appendChild(k);
+    row.appendChild(document.createTextNode(': '));
+  }
+
+  // primitives
+  if (data === null || typeof data !== 'object') {
+    const v = document.createElement('span');
+    v.className = data === null ? 'j-nl' : typeof data === 'boolean' ? 'j-b' : typeof data === 'number' ? 'j-n' : 'j-s';
+    v.textContent = JSON.stringify(data);
+    row.appendChild(v);
+    parent.appendChild(row);
+    return;
+  }
+
+  const isArr = Array.isArray(data);
+  const count = isArr ? data.length : Object.keys(data).length;
+  const [o, c] = isArr ? ['[', ']'] : ['{', '}'];
+
+  // empty container
+  if (count === 0) {
+    const v = document.createElement('span');
+    v.textContent = o + c;
+    row.appendChild(v);
+    parent.appendChild(row);
+    return;
+  }
+
+  // toggle arrow (prepend before key)
+  const toggle = document.createElement('span');
+  toggle.className = 'j-toggle';
+  toggle.textContent = '▾';
+  row.insertBefore(toggle, row.firstChild);
+
+  // opening bracket
+  row.appendChild(Object.assign(document.createElement('span'), {textContent: o}));
+
+  // collapsed summary (hidden by default)
+  const summary = Object.assign(document.createElement('span'), {
+    className: 'j-summary',
+    textContent: isArr ? ` [${count} items]` : ` {${count} keys}`,
+  });
+  summary.style.display = 'none';
+  row.appendChild(summary);
+
+  // inline close (hidden by default)
+  const closeInline = Object.assign(document.createElement('span'), {textContent: c});
+  closeInline.style.display = 'none';
+  row.appendChild(closeInline);
+
+  parent.appendChild(row);
+
+  // children container
+  const kids = document.createElement('div');
+  kids.className = 'j-children';
+  if (isArr) {
+    data.forEach((item, i) => renderNodeInto(kids, item, i));
+  } else {
+    Object.entries(data).forEach(([k, v]) => renderNodeInto(kids, v, k));
+  }
+  parent.appendChild(kids);
+
+  // closing bracket on own line
+  const closeRow = document.createElement('div');
+  closeRow.appendChild(Object.assign(document.createElement('span'), {textContent: c}));
+  parent.appendChild(closeRow);
+
+  // click handler
+  const doToggle = e => {
+    e.stopPropagation();
+    const collapsed = toggle.textContent === '▸';
+    toggle.textContent = collapsed ? '▾' : '▸';
+    kids.style.display = collapsed ? '' : 'none';
+    closeRow.style.display = collapsed ? '' : 'none';
+    summary.style.display = collapsed ? 'none' : '';
+    closeInline.style.display = collapsed ? 'none' : '';
+  };
+  toggle.addEventListener('click', doToggle);
+  summary.addEventListener('click', doToggle);
+}
+
+function buildJsonTree(container, data) {
+  container.innerHTML = '';
+  const pre = document.createElement('pre');
+  pre.className = 'j-tree';
+  try {
+    const obj = typeof data === 'string' ? JSON.parse(data) : data;
+    if (obj == null) { pre.textContent = String(data); container.appendChild(pre); return; }
+    renderNodeInto(pre, obj, null);
+  } catch {
+    pre.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+  }
+  container.appendChild(pre);
+}
+
+// populate containers after renderDetail sets innerHTML
+function populateJsonTrees(r) {
+  const isLive = r.status === 'pending' || r.status === 'streaming';
+
+  // request pane
+  const reqEl = document.getElementById('json-request');
+  if (reqEl) {
+    if (prettyMode) buildJsonTree(reqEl, r.request);
+    else reqEl.innerHTML = `<pre>${esc(JSON.stringify(r.request, null, 2))}</pre>`;
+  }
+
+  // response pane (only when complete)
+  const resEl = document.getElementById('json-response');
+  if (resEl && !isLive && r.status !== 'error') {
+    if (prettyMode && r.response && typeof r.response === 'object') {
+      buildJsonTree(resEl, r.response);
+    } else if (prettyMode && streaming[r.id]) {
+      resEl.innerHTML = `<pre>${esc(streaming[r.id])}</pre>`;
+    } else {
+      const raw = typeof r.response === 'string' ? r.response : JSON.stringify(r.response, null, 2);
+      resEl.innerHTML = `<pre>${esc(raw)}</pre>`;
+    }
+  }
+
+  // raw pane
+  const rawEl = document.getElementById('json-raw');
+  if (rawEl) {
+    const rawData = {request: r.request, response: r.response, chunks: r.chunks, usage: r.usage};
+    if (prettyMode) buildJsonTree(rawEl, rawData);
+    else rawEl.innerHTML = `<pre>${esc(JSON.stringify(rawData, null, 2))}</pre>`;
+  }
+}
+
+function togglePretty() {
+  prettyMode = !prettyMode;
+  if (sel) renderDetail(records[sel]);
+}
+
+// ── list ──────────────────────────────────────────────────────────────────────
 
 function filteredRecords() {
   const q = document.getElementById('q').value.toLowerCase();
@@ -194,6 +331,8 @@ function updateStats() {
   document.getElementById('st').textContent = `${inp+out} tokens`;
 }
 
+// ── detail ────────────────────────────────────────────────────────────────────
+
 function pick(id) {
   sel = id;
   renderList();
@@ -209,6 +348,8 @@ function renderDetail(r) {
   const isLive = r.status === 'pending' || r.status === 'streaming';
   const liveContent = streaming[r.id] || '';
   const dp = document.getElementById('dp');
+  const tb = `<button class="toggle-btn${prettyMode?' on':''}" onclick="togglePretty()">${prettyMode?'Raw':'Pretty'}</button>`;
+
   dp.innerHTML = `
     <div class="tabs">
       <div class="tab${tab==='request'?' active':''}" data-tab="request" onclick="switchTab('request')">Request</div>
@@ -217,23 +358,28 @@ function renderDetail(r) {
       <div class="tab${tab==='raw'?' active':''}" data-tab="raw" onclick="switchTab('raw')">Raw</div>
     </div>
     <div class="tab-body">
+
       <div id="pane-request" class="pane${tab==='request'?' active':''}">
         <div class="pane-hdr">
           <span class="pane-hdr-left">${esc(r.method)} ${esc(r.path)} &middot; ${fmt(r.timestamp)}</span>
-          <div class="pane-actions">
-            <button class="toggle-btn${prettyMode?' on':''}" onclick="togglePretty()">${prettyMode?'Raw':'Pretty'}</button>
-          </div>
+          <div class="pane-actions">${tb}</div>
         </div>
-        ${renderJson(r.request)}
+        <div id="json-request"></div>
       </div>
+
       <div id="pane-response" class="pane${tab==='response'?' active':''}">
         ${isLive
           ? `<div class="stream-box" id="sb-live">${esc(liveContent)}<span class="stream-cursor"></span></div>`
           : r.status === 'error'
             ? `<pre style="color:#ff5555">${esc(r.error||'Unknown error')}</pre>`
-            : `<pre>${esc(liveContent || JSON.stringify(r.response,null,2))}</pre>`
+            : `<div class="pane-hdr">
+                 <span class="pane-hdr-left"></span>
+                 <div class="pane-actions">${tb}</div>
+               </div>
+               <div id="json-response"></div>`
         }
       </div>
+
       <div id="pane-tokens" class="pane${tab==='tokens'?' active':''}">
         <div class="tok-grid">
           <div class="tok-card"><div class="val">${r.usage?.inputTokens||0}</div><div class="lbl">Input Tokens</div></div>
@@ -247,17 +393,21 @@ function renderDetail(r) {
           Time: ${new Date(r.timestamp).toLocaleString()}
         </div>
       </div>
+
       <div id="pane-raw" class="pane${tab==='raw'?' active':''}">
         <div class="pane-hdr">
           <span class="pane-hdr-left"></span>
           <div class="pane-actions">
-            <button class="toggle-btn${prettyMode?' on':''}" onclick="togglePretty()">${prettyMode?'Raw':'Pretty'}</button>
+            ${tb}
             <button class="copy-btn" onclick="copyRaw()">Copy</button>
           </div>
         </div>
-        <div id="raw-pre">${renderJson({request:r.request,response:r.response,chunks:r.chunks,usage:r.usage})}</div>
+        <div id="json-raw"></div>
       </div>
+
     </div>`;
+
+  populateJsonTrees(r);
 }
 
 function updateLive() {
@@ -273,9 +423,13 @@ function switchTab(tab) {
 }
 
 function copyRaw() {
-  const el = document.getElementById('raw-pre');
-  if (el) navigator.clipboard.writeText(el.textContent).catch(()=>{});
+  if (!sel) return;
+  const r = records[sel];
+  const data = {request: r.request, response: r.response, chunks: r.chunks, usage: r.usage};
+  navigator.clipboard.writeText(JSON.stringify(data, null, 2)).catch(()=>{});
 }
+
+// ── actions ───────────────────────────────────────────────────────────────────
 
 function doExport(fmt) {
   const q = document.getElementById('q').value;
@@ -298,6 +452,8 @@ function doClear() {
     document.getElementById('dp').innerHTML = '<div class="empty">Select a request to inspect</div>';
   });
 }
+
+// ── SSE ───────────────────────────────────────────────────────────────────────
 
 let es;
 function connect() {
@@ -341,6 +497,8 @@ function connect() {
     if (sel === r.id) renderDetail(r);
   });
 }
+
+// ── boot ──────────────────────────────────────────────────────────────────────
 
 ['q','mf','sf'].forEach(id => document.getElementById(id).addEventListener('input', renderList));
 document.getElementById('sf').addEventListener('change', renderList);
