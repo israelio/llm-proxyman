@@ -1,9 +1,19 @@
 const http = require('node:http');
 const https = require('node:https');
+const zlib = require('node:zlib');
 const { URL } = require('node:url');
 const store = require('./store');
 const sse = require('./sse');
 const config = require('./config');
+
+function decompress(buffer, encoding) {
+  try {
+    if (encoding === 'gzip' || encoding === 'x-gzip') return zlib.gunzipSync(buffer);
+    if (encoding === 'deflate') return zlib.inflateSync(buffer);
+    if (encoding === 'br') return zlib.brotliDecompressSync(buffer);
+  } catch {}
+  return buffer;
+}
 
 function parseUsage(body) {
   let inputTokens = 0, outputTokens = 0, foundAny = false;
@@ -57,8 +67,10 @@ const ANTHROPIC_URL = 'https://api.anthropic.com';
 const ANTHROPIC_MODEL_RE = /sonnet|opus|haiku/i;
 const OPENAI_MODEL_RE = /^gpt-/i;
 
-function resolveUpstreamUrl(model, overrideUrl) {
+function resolveUpstreamUrl(model, overrideUrl, mitmHost) {
   if (overrideUrl) return overrideUrl;
+  // MITM requests carry the original CONNECT hostname — forward there
+  if (mitmHost) return `https://${mitmHost}`;
   if (config.mode === 'anthropic') return ANTHROPIC_URL;
   if (config.mode === 'auto') {
     if (ANTHROPIC_MODEL_RE.test(model || '')) return ANTHROPIC_URL;
@@ -77,11 +89,14 @@ function createProxyMiddleware(overrideUrl) {
       let requestBody = null;
       let model = 'unknown';
       try {
-        requestBody = JSON.parse(rawBody.toString());
+        const reqEncoding = req.headers['content-encoding'];
+        const bodyBuf = reqEncoding ? decompress(rawBody, reqEncoding) : rawBody;
+        requestBody = JSON.parse(bodyBuf.toString());
         model = requestBody.model || 'unknown';
       } catch {}
 
-      const upstream = new URL(resolveUpstreamUrl(model, overrideUrl));
+      const mitmHost = req.headers['x-mitm-host'] || null;
+      const upstream = new URL(resolveUpstreamUrl(model, overrideUrl, mitmHost));
       const isHttps = upstream.protocol === 'https:';
       const transport = isHttps ? https : http;
 
@@ -111,18 +126,25 @@ function createProxyMiddleware(overrideUrl) {
       const upstreamReq = transport.request(options, (upstreamRes) => {
         res.writeHead(upstreamRes.statusCode, upstreamRes.headers);
 
-        let fullBody = '';
+        const resChunks = [];
 
         upstreamRes.on('data', (chunk) => {
           res.write(chunk);
+          resChunks.push(chunk);
+          // Stream raw text chunks for live display (best-effort; may be garbled if compressed)
           const text = chunk.toString();
-          fullBody += text;
           store.appendChunk(record.id, text);
           sse.emit('request:chunk', { id: record.id, chunk: text });
         });
 
         upstreamRes.on('end', () => {
           res.end();
+          // Decompress full response body for logging/usage parsing
+          const resEncoding = upstreamRes.headers['content-encoding'];
+          const rawRes = Buffer.concat(resChunks);
+          const bodyBuf = resEncoding ? decompress(rawRes, resEncoding) : rawRes;
+          const fullBody = bodyBuf.toString('utf8');
+
           const usage = parseUsage(fullBody);
           const durationMs = Date.now() - record._startTime;
           let parsedResponse = null;
