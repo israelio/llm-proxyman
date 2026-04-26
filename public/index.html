@@ -13,7 +13,6 @@ body{font-family:'SF Mono',Monaco,monospace;background:#111;color:#d4d4d4;height
 .toolbar input:focus,.toolbar select:focus{outline:none;border-color:#4a9eff}
 /* upstream input wider */
 #upstream-input{width:220px}
-#openai-input{width:220px}
 .btn{background:#252525;border:1px solid #3a3a3a;color:#d4d4d4;padding:4px 10px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px}
 .btn:hover{background:#2f2f2f;border-color:#555}
 .btn.danger{border-color:#5a2222;color:#ff6b6b}
@@ -108,16 +107,13 @@ pre{background:#181818;border:1px solid #2a2a2a;padding:12px;border-radius:4px;f
   <button class="btn" onclick="doExport('json')">Export JSON</button>
   <button class="btn" onclick="doExport('csv')">Export CSV</button>
   <button class="btn danger" onclick="doClear()">Clear</button>
-  <button class="btn" id="btn-autoscroll" onclick="toggleAutoScroll()">Auto Scroll</button>
+  <button class="btn on" id="btn-autoscroll" onclick="toggleAutoScroll()">Auto Scroll</button>
   <div class="sep"></div>
-  <button class="btn" id="btn-auto" onclick="setMode('auto')">Auto</button>
+  <button class="btn" id="btn-auto" onclick="setMode('auto')">Auto Routing</button>
   <button class="btn" id="btn-anthropic" onclick="setMode('anthropic')">Anthropic</button>
   <button class="btn" id="btn-local" onclick="setMode('local')">Local LLM</button>
   <input id="upstream-input" type="text" placeholder="Local LLM URL">
   <button class="btn primary" onclick="setUpstream()">Set</button>
-  <div class="sep"></div>
-  <input id="openai-input" type="text" placeholder="OpenAI upstream URL">
-  <button class="btn primary" onclick="setOpenaiUrl()">Set OpenAI</button>
   <span id="cs" class="conn off">&#9679; Disconnected</span>
 </div>
 <div class="main">
@@ -137,7 +133,7 @@ const records = {};
 const streaming = {};
 let sel = null;
 let prettyMode = true;
-let autoScroll = false;
+let autoScroll = true;
 
 function toggleAutoScroll() {
   autoScroll = !autoScroll;
@@ -163,6 +159,20 @@ function fmtDuration(ms) {
   return m + 'm ' + s + 's';
 }
 
+function extractTextFromSse(sseString) {
+  let out = '';
+  for (const line of sseString.split('\n')) {
+    if (!line.startsWith('data: ') || line === 'data: [DONE]') continue;
+    try {
+      const j = JSON.parse(line.slice(6));
+      if (j.choices?.[0]?.delta?.content) out += j.choices[0].delta.content;
+      else if (j.delta?.text) out += j.delta.text;
+      else if (j.type === 'content_block_delta' && j.delta?.text) out += j.delta.text;
+    } catch {}
+  }
+  return out;
+}
+
 function extractText(chunk) {
   let out = '';
   for (const line of chunk.split('\n')) {
@@ -181,7 +191,46 @@ function extractText(chunk) {
 function getStreamedText(r) {
   if (streaming[r.id]) return streaming[r.id];
   if (!r.chunks || r.chunks.length === 0) return '';
+  if (r.method === 'WS') return r.chunks.join('');
   return r.chunks.map(c => extractText(c)).join('');
+}
+
+// Extract user message from an OpenAI Responses API request object
+function extractInputText(req) {
+  if (!req) return '';
+  const input = req.input || req.messages;
+  if (!Array.isArray(input)) return '';
+  const parts = [];
+  for (const item of input) {
+    if (item.role === 'user' && item.content) {
+      if (typeof item.content === 'string') { parts.push(item.content); continue; }
+      if (Array.isArray(item.content)) {
+        for (const c of item.content) {
+          if (c.text || c.input_text) parts.push(c.text || c.input_text);
+        }
+      }
+    }
+  }
+  return parts.join('\n');
+}
+
+// Extract human-readable output text from an OpenAI Responses API object
+function extractOutputText(resp) {
+  if (!resp || !resp.output) return '';
+  const parts = [];
+  for (const item of resp.output) {
+    if (item.content) {
+      for (const c of item.content) {
+        if (c.text) parts.push(c.text);
+      }
+    }
+    if (item.type === 'message' && item.content) {
+      for (const c of item.content) {
+        if (c.text) parts.push(c.text);
+      }
+    }
+  }
+  return parts.join('\n');
 }
 
 // ── SSE / inline-JSON rendering ───────────────────────────────────────────────
@@ -380,6 +429,15 @@ function collapseAll(containerId) {
 function populateJsonTrees(r) {
   const isLive = r.status === 'pending' || r.status === 'streaming';
 
+  // request text summary (user message)
+  const reqSummaryEl = document.getElementById('request-text-summary');
+  if (reqSummaryEl) {
+    const inputText = extractInputText(r.request);
+    if (inputText) {
+      reqSummaryEl.innerHTML = `<pre style="margin-bottom:12px;border-color:#2a3a5a;background:#0a0a1a;color:#b0c0e0;white-space:pre-wrap;word-break:break-word">${esc(inputText)}</pre>`;
+    }
+  }
+
   // request pane
   const reqEl = document.getElementById('json-request');
   if (reqEl) {
@@ -387,17 +445,37 @@ function populateJsonTrees(r) {
     else reqEl.innerHTML = `<pre>${esc(JSON.stringify(r.request, null, 2))}</pre>`;
   }
 
-  // response pane (only when complete)
+  // response text summary + response body
+  const summaryEl = document.getElementById('response-text-summary');
   const resEl = document.getElementById('json-response');
-  if (resEl && !isLive && r.status !== 'error') {
-    if (r.response && typeof r.response === 'object') {
-      // non-streaming JSON response — show tree
-      if (prettyMode) buildJsonTree(resEl, r.response);
-      else resEl.innerHTML = `<pre>${esc(JSON.stringify(r.response, null, 2))}</pre>`;
-    } else {
-      // streaming SSE response — show extracted text
-      const text = getStreamedText(r);
-      resEl.innerHTML = `<pre>${esc(text || (typeof r.response === 'string' ? r.response : ''))}</pre>`;
+  if (!isLive && r.status !== 'error') {
+    const streamText = getStreamedText(r);
+    const outputText = r.response ? extractOutputText(r.response) : '';
+    const sseText = (!streamText && !outputText && typeof r.response === 'string' && isSse(r.response)) ? extractTextFromSse(r.response) : '';
+    const displayText = streamText || outputText || sseText;
+
+    // text summary at top
+    if (summaryEl && displayText) {
+      summaryEl.innerHTML = `<pre style="margin-bottom:12px;border-color:#2a4a2a;background:#0a1a0a;color:#b0d0b0;white-space:pre-wrap;word-break:break-word">${esc(displayText)}</pre>`;
+    }
+
+    // JSON tree below
+    if (resEl) {
+      if (r.response && typeof r.response === 'object') {
+        if (prettyMode) buildJsonTree(resEl, r.response);
+        else resEl.innerHTML = `<pre>${esc(JSON.stringify(r.response, null, 2))}</pre>`;
+      } else if (typeof r.response === 'string' && isSse(r.response)) {
+        // Parse SSE events into array of objects for JSON tree
+        const events = [];
+        for (const line of r.response.split('\n')) {
+          if (!line.startsWith('data: ') || line === 'data: [DONE]') continue;
+          try { events.push(JSON.parse(line.slice(6))); } catch {}
+        }
+        if (events.length) {
+          if (prettyMode) buildJsonTree(resEl, events);
+          else resEl.innerHTML = `<pre>${esc(JSON.stringify(events, null, 2))}</pre>`;
+        }
+      }
     }
   }
 
@@ -516,6 +594,7 @@ function renderDetail(r) {
     <div class="tab-body">
 
       <div id="pane-request" class="pane${tab==='request'?' active':''}">
+        <div id="request-text-summary"></div>
         <div class="pane-hdr">
           <span class="pane-hdr-left">${esc(r.method)} ${esc(r.path)} &middot; ${fmt(r.timestamp)}</span>
           <div class="pane-actions">${reqBtns}</div>
@@ -528,9 +607,10 @@ function renderDetail(r) {
           ? `<div class="stream-box" id="sb-live">${esc(liveContent)}<span class="stream-cursor"></span></div>`
           : r.status === 'error'
             ? `<pre style="color:#ff5555">${esc(r.error||'Unknown error')}</pre>`
-            : `<div class="pane-hdr">
+            : `<div id="response-text-summary"></div>
+               <div class="pane-hdr">
                 <span class="pane-hdr-left"></span>
-                <div class="pane-actions">${r.response && typeof r.response === 'object' ? resBtns : tb}</div>
+                <div class="pane-actions">${(r.response && typeof r.response === 'object') || (typeof r.response === 'string' && isSse(r.response)) ? resBtns : tb}</div>
                </div>
                <div id="json-response"></div>`
         }
@@ -587,7 +667,6 @@ function copyRaw() {
 
 function applyConfig(cfg) {
   if (cfg.upstreamUrl) document.getElementById('upstream-input').value = cfg.upstreamUrl;
-  if (cfg.openaiUrl) document.getElementById('openai-input').value = cfg.openaiUrl;
   const input = document.getElementById('upstream-input');
   input.disabled = cfg.mode === 'anthropic';
   input.style.opacity = cfg.mode === 'anthropic' ? '0.35' : '';
@@ -619,12 +698,6 @@ function setUpstream() {
   putConfig({ mode: 'local', upstreamUrl: val });
 }
 
-function setOpenaiUrl() {
-  const val = document.getElementById('openai-input').value.trim();
-  if (!val) return;
-  putConfig({ openaiUrl: val });
-}
-
 function setMode(mode) {
   // 'anthropic' only changes the mode — upstreamUrl is preserved as the local LLM URL
   putConfig({ mode });
@@ -633,10 +706,6 @@ function setMode(mode) {
 document.getElementById('upstream-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') setUpstream();
 });
-document.getElementById('openai-input').addEventListener('keydown', e => {
-  if (e.key === 'Enter') setOpenaiUrl();
-});
-
 // ── actions ───────────────────────────────────────────────────────────────────
 
 function doExport(fmt) {
@@ -693,7 +762,9 @@ function connect() {
   es.addEventListener('request:chunk', e => {
     const {id, chunk} = JSON.parse(e.data);
     if (records[id]) records[id].status = 'streaming';
-    streaming[id] = (streaming[id]||'') + extractText(chunk);
+    // WS chunks are plain text deltas; SSE chunks need extractText()
+    const isWs = records[id]?.method === 'WS';
+    streaming[id] = (streaming[id]||'') + (isWs ? chunk : extractText(chunk));
     if (sel === id) updateLive();
     else renderList();
   });
@@ -732,7 +803,8 @@ fetch('/api/requests')
   .then(data => {
     data.forEach(r => {
       records[r.id] = r;
-      streaming[r.id] = (r.chunks || []).map(c => extractText(c)).join('');
+      const isWs = r.method === 'WS';
+    streaming[r.id] = isWs ? (r.chunks || []).join('') : (r.chunks || []).map(c => extractText(c)).join('');
     });
     renderList();
   });

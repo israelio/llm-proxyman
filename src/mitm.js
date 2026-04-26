@@ -73,6 +73,7 @@ function createConnectHandler(port) {
     const parts = (req.url || '').split(':');
     const hostname   = parts[0];
     const targetPort = parseInt(parts[1] || '443', 10);
+    console.log(`[MITM] CONNECT ${hostname}:${targetPort}`);
 
     // Non-443: blind TCP tunnel (can't inspect, but don't break it)
     if (targetPort !== 443) {

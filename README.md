@@ -52,7 +52,13 @@ Add to your shell profile (`~/.zshrc` or `~/.bashrc`) to make it permanent:
 echo 'export ANTHROPIC_BASE_URL="http://127.0.0.1:8080"' >> ~/.zshrc
 ```
 
-Then in Claude Code settings, select your local model as the provider.
+**Run Claude Code with your local model:**
+
+```bash
+ANTHROPIC_BASE_URL="http://127.0.0.1:8080" claude --model Qwen3.6-35B-A3B-UD-Q4_K_X
+```
+
+Replace `Qwen3.6-35B-A3B-UD-Q4_K_X` with whatever model name your local LLM server exposes.
 
 ---
 
@@ -76,6 +82,12 @@ UPSTREAM_URL=https://api.anthropic.com npm start
 export ANTHROPIC_BASE_URL="http://127.0.0.1:8080"
 ```
 
+Or as a one-liner:
+
+```bash
+ANTHROPIC_BASE_URL="http://127.0.0.1:8080" claude
+```
+
 Your existing `ANTHROPIC_API_KEY` is passed through transparently — the proxy forwards all headers including authentication.
 
 > **Note:** The proxy runs on HTTP locally but forwards to HTTPS upstream. Your API key is only in memory on your own machine and is never logged to disk unless you enable `PERSIST=true`.
@@ -92,7 +104,13 @@ Codex CLI → proxy (:8080) → api.openai.com
 
 The proxy auto-detects `gpt-*` models (in **Auto** mode) and routes them to `api.openai.com`. Your `OPENAI_API_KEY` is forwarded transparently — the proxy never stores it.
 
-### Option A — environment variable (recommended)
+### Option A — HTTPS_PROXY (simplest)
+
+```bash
+HTTPS_PROXY=http://127.0.0.1:8080 HTTP_PROXY=http://127.0.0.1:8080 codex
+```
+
+### Option B — environment variable
 
 ```bash
 export OPENAI_BASE_URL="http://127.0.0.1:8080"
@@ -106,7 +124,7 @@ echo 'export OPENAI_BASE_URL="http://127.0.0.1:8080"' >> ~/.zshrc
 
 Then start Codex as usual — it will route through the proxy automatically.
 
-### Option B — Codex config file
+### Option C — Codex config file
 
 Edit `~/.codex/config.json`:
 

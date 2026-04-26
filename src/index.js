@@ -7,6 +7,7 @@ const config = require('./config');
 const { createProxyMiddleware } = require('./proxy');
 const tls = require('node:tls');
 const { setupCA, createConnectHandler, mitmHosts } = require('./mitm');
+const { interceptCodexWs } = require('./ws-intercept');
 
 const PORT = parseInt(process.env.PROXY_PORT || '8080', 10);
 
@@ -27,11 +28,14 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 // Proxy /v1/* — standard OpenAI/Anthropic paths
 app.all('/v1/*', createProxyMiddleware());
 
-// Catch-all for MITM'd requests on non-standard paths (e.g. chatgpt.com/backend-api/*)
-// Identified by loopback port in mitmHosts map — works for all keep-alive requests.
+// Catch-all for MITM'd requests — only log actual API calls, silence noise.
+const API_PATHS = /^\/(v1\/|backend-api\/(codex\/responses|conversation|responses))/;
 app.use((req, res, next) => {
   if (!mitmHosts.has(req.socket.remotePort)) return next();
-  createProxyMiddleware()(req, res);
+  const silent = !API_PATHS.test(req.url);
+  if (req.method === 'POST' || !silent) console.log(`[MITM-ROUTE] ${req.method} ${req.url} silent=${silent}`);
+  else if (req.url.includes('backend-api')) console.log(`[MITM-ROUTE] ${req.method} ${req.url} silent=${silent}`);
+  createProxyMiddleware({ silent })(req, res);
 });
 
 const server = app.listen(PORT, () => {
@@ -52,10 +56,16 @@ server.on('connect', createConnectHandler(PORT));
 server.on('upgrade', (req, socket, head) => {
   socket.on('error', () => {});
   const hostname = mitmHosts.get(socket.remotePort);
+  console.log(`[WS-UPGRADE] ${req.method} ${req.url} hostname=${hostname}`);
   if (!hostname) { socket.destroy(); return; }
 
+  // Intercept codex API WebSockets to log request/response
+  if (req.url.startsWith('/backend-api/codex/responses') || req.url.startsWith('/backend-api/conversation')) {
+    interceptCodexWs(req, socket, head, hostname);
+    return;
+  }
+
   const upstream = tls.connect({ host: hostname, port: 443, servername: hostname }, () => {
-    // Forward the upgrade request to the real server
     const headers = Object.entries(req.headers)
       .filter(([k]) => k !== 'x-mitm-host')
       .map(([k, v]) => `${k}: ${v}`)

@@ -12,6 +12,7 @@ function decompress(buffer, encoding) {
     if (encoding === 'gzip' || encoding === 'x-gzip') return zlib.gunzipSync(buffer);
     if (encoding === 'deflate') return zlib.inflateSync(buffer);
     if (encoding === 'br') return zlib.brotliDecompressSync(buffer);
+    if (encoding === 'zstd' && zlib.zstdDecompressSync) return zlib.zstdDecompressSync(buffer);
   } catch {}
   return buffer;
 }
@@ -80,7 +81,10 @@ function resolveUpstreamUrl(model, overrideUrl, mitmHost) {
   return config.upstreamUrl;
 }
 
-function createProxyMiddleware(overrideUrl) {
+function createProxyMiddleware(overrideUrlOrOpts) {
+  const opts = typeof overrideUrlOrOpts === 'object' ? overrideUrlOrOpts : {};
+  const overrideUrl = typeof overrideUrlOrOpts === 'string' ? overrideUrlOrOpts : undefined;
+  const silent = opts.silent || false;
   return function proxyMiddleware(req, res) {
     const bodyChunks = [];
     req.on('data', c => bodyChunks.push(c));
@@ -94,17 +98,21 @@ function createProxyMiddleware(overrideUrl) {
         const bodyBuf = reqEncoding ? decompress(rawBody, reqEncoding) : rawBody;
         requestBody = JSON.parse(bodyBuf.toString());
         model = requestBody.model || 'unknown';
-      } catch {}
+        if (!silent) console.log(`[PROXY] parsed model=${model} encoding=${reqEncoding} bodyKeys=${Object.keys(requestBody).join(',')}`);
+      } catch (e) {
+        if (!silent) console.log(`[PROXY] body parse failed: ${e.message} encoding=${req.headers['content-encoding']} rawLen=${rawBody.length}`);
+      }
 
       // Look up MITM hostname by the incoming socket's remote port (loopback port).
       // This works for all requests on a keep-alive connection, not just the first one.
       const mitmHost = mitmHosts.get(req.socket.remotePort) || null;
+      if (!silent) console.log(`[PROXY] ${req.method} ${req.url} model=${model} mitmHost=${mitmHost}`);
       const upstream = new URL(resolveUpstreamUrl(model, overrideUrl, mitmHost));
       const isHttps = upstream.protocol === 'https:';
       const transport = isHttps ? https : http;
 
       const requestContent = requestBody || (rawBody.length ? rawBody.toString() : null);
-      const record = store.add({
+      const record = silent ? null : store.add({
         method: req.method,
         path: req.path || req.url,
         model,
@@ -112,7 +120,7 @@ function createProxyMiddleware(overrideUrl) {
         request: requestContent,
       });
 
-      sse.emit('request:start', record);
+      if (record) sse.emit('request:start', record);
 
       // Build forwarded headers: strip internal proxy headers, fix host + content-length
       const forwardHeaders = { ...req.headers };
@@ -136,7 +144,7 @@ function createProxyMiddleware(overrideUrl) {
       // Drops the record entirely if both request and response are empty (GET noise).
       let done = false;
       const finalize = (status, extra = {}) => {
-        if (done) return;
+        if (done || silent) return;
         done = true;
         const durationMs = Date.now() - record._startTime;
         const hasContent = requestContent || extra.response;
@@ -149,12 +157,14 @@ function createProxyMiddleware(overrideUrl) {
       };
 
       const upstreamReq = transport.request(options, (upstreamRes) => {
+        console.log(`[PROXY] <- ${upstreamRes.statusCode} for ${req.method} ${req.url} upstream=${upstream.origin}`);
         res.writeHead(upstreamRes.statusCode, upstreamRes.headers);
 
         const resChunks = [];
 
         upstreamRes.on('data', (chunk) => {
           res.write(chunk);
+          if (silent) return;
           resChunks.push(chunk);
           const text = chunk.toString();
           store.appendChunk(record.id, text);
@@ -181,6 +191,7 @@ function createProxyMiddleware(overrideUrl) {
       });
 
       upstreamReq.on('error', (err) => {
+        console.log(`[PROXY] ERROR ${req.method} ${req.url} -> ${err.message} code=${err.code}`);
         if (!res.headersSent) {
           res.writeHead(502, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: `Upstream error: ${err.message}` }));
@@ -188,10 +199,14 @@ function createProxyMiddleware(overrideUrl) {
         finalize('error', { error: err.message });
       });
 
-      // Client disconnected (e.g. Codex timed out) — abort upstream and mark done
+      // Abort upstream only if client truly disconnected (socket destroyed without
+      // completing the HTTP exchange). req.complete means body was fully received,
+      // so close after complete is normal — not a disconnect.
       req.on('close', () => {
-        upstreamReq.destroy();
-        finalize('complete');
+        if (!req.complete && !res.headersSent) {
+          upstreamReq.destroy();
+          finalize('complete');
+        }
       });
 
       upstreamReq.write(rawBody);
