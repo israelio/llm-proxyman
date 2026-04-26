@@ -137,6 +137,14 @@ function getById(id) {
   return records.find(r => r.id === id) || null;
 }
 
+function remove(id) {
+  const idx = records.findIndex(r => r.id === id);
+  if (idx !== -1) records.splice(idx, 1);
+  if (db) {
+    try { db.prepare('DELETE FROM requests WHERE id = ?').run(id); } catch {}
+  }
+}
+
 function clear() {
   records = [];
   if (db) {
@@ -155,4 +163,4 @@ function getStats() {
 
 initDb();
 
-module.exports = { add, update, appendChunk, getAll, getById, clear, getStats };
+module.exports = { add, update, remove, appendChunk, getAll, getById, clear, getStats };

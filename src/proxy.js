@@ -103,12 +103,13 @@ function createProxyMiddleware(overrideUrl) {
       const isHttps = upstream.protocol === 'https:';
       const transport = isHttps ? https : http;
 
+      const requestContent = requestBody || (rawBody.length ? rawBody.toString() : null);
       const record = store.add({
         method: req.method,
         path: req.path || req.url,
         model,
         upstream: upstream.origin,
-        request: requestBody || rawBody.toString(),
+        request: requestContent,
       });
 
       sse.emit('request:start', record);
@@ -131,12 +132,18 @@ function createProxyMiddleware(overrideUrl) {
         },
       };
 
-      // Deduplicated finalize — called once regardless of which path ends the request
+      // Deduplicated finalize — called once regardless of which path ends the request.
+      // Drops the record entirely if both request and response are empty (GET noise).
       let done = false;
       const finalize = (status, extra = {}) => {
         if (done) return;
         done = true;
         const durationMs = Date.now() - record._startTime;
+        const hasContent = requestContent || extra.response;
+        if (!hasContent && ['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+          store.remove(record.id);
+          return;
+        }
         const updated = store.update(record.id, { status, durationMs, ...extra });
         sse.emit(`request:${status}`, updated);
       };
