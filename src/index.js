@@ -27,8 +27,9 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 app.all('/v1/*', createProxyMiddleware());
 
 // Catch-all for MITM'd requests on non-standard paths (e.g. chatgpt.com/backend-api/*)
-// X-Mitm-Host header is injected by the MITM handler and tells us where to forward
-app.all('*', (req, res, next) => {
+// X-Mitm-Host header is injected by the MITM handler and tells us where to forward.
+// app.use (no path) is used because app.all('*') doesn't reliably match in Express 4.22+
+app.use((req, res, next) => {
   if (!req.headers['x-mitm-host']) return next();
   createProxyMiddleware()(req, res);
 });
