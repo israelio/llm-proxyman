@@ -1,4 +1,4 @@
-# local-proxy
+# local-llm-proxy
 
 A local HTTP proxy that intercepts Claude Code traffic and exposes a real-time web UI to inspect all requests and responses, token usage, and timing.
 
