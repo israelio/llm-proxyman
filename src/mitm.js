@@ -131,6 +131,10 @@ function createConnectHandler(port) {
       tlsSocket.pipe(injectMitmHost(hostname)).pipe(loopback);
       loopback.pipe(tlsSocket);
     });
+
+    // Propagate closes in both directions so neither side hangs
+    tlsSocket.on('close', () => loopback.destroy());
+    loopback.on('close', () => tlsSocket.destroy());
   };
 }
 

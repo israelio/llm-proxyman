@@ -110,17 +110,32 @@ function createProxyMiddleware(overrideUrl) {
 
       sse.emit('request:start', record);
 
+      // Build forwarded headers: strip internal proxy headers, fix host + content-length
+      const forwardHeaders = { ...req.headers };
+      delete forwardHeaders['x-mitm-host']; // internal — must not leak to upstream
+
       const options = {
         hostname: upstream.hostname,
         port: upstream.port || (isHttps ? 443 : 80),
         path: req.url,
         method: req.method,
         headers: {
-          ...req.headers,
+          ...forwardHeaders,
           host: upstream.host,
           'content-length': rawBody.length,
-          'accept-encoding': 'identity', // disable compression so response is human-readable
+          // Keep original accept-encoding so client can decompress the response itself.
+          // We decompress a copy for logging purposes in the 'end' handler below.
         },
+      };
+
+      // Deduplicated finalize — called once regardless of which path ends the request
+      let done = false;
+      const finalize = (status, extra = {}) => {
+        if (done) return;
+        done = true;
+        const durationMs = Date.now() - record._startTime;
+        const updated = store.update(record.id, { status, durationMs, ...extra });
+        sse.emit(`request:${status}`, updated);
       };
 
       const upstreamReq = transport.request(options, (upstreamRes) => {
@@ -131,7 +146,6 @@ function createProxyMiddleware(overrideUrl) {
         upstreamRes.on('data', (chunk) => {
           res.write(chunk);
           resChunks.push(chunk);
-          // Stream raw text chunks for live display (best-effort; may be garbled if compressed)
           const text = chunk.toString();
           store.appendChunk(record.id, text);
           sse.emit('request:chunk', { id: record.id, chunk: text });
@@ -139,44 +153,35 @@ function createProxyMiddleware(overrideUrl) {
 
         upstreamRes.on('end', () => {
           res.end();
-          // Decompress full response body for logging/usage parsing
+          // Decompress full response for logging/usage parsing
           const resEncoding = upstreamRes.headers['content-encoding'];
           const rawRes = Buffer.concat(resChunks);
           const bodyBuf = resEncoding ? decompress(rawRes, resEncoding) : rawRes;
           const fullBody = bodyBuf.toString('utf8');
-
           const usage = parseUsage(fullBody);
-          const durationMs = Date.now() - record._startTime;
           let parsedResponse = null;
           try { parsedResponse = JSON.parse(fullBody); } catch {}
-          const updated = store.update(record.id, {
-            status: 'complete',
-            response: parsedResponse || fullBody,
-            usage,
-            durationMs,
-          });
-          sse.emit('request:complete', updated);
+          finalize('complete', { response: parsedResponse || fullBody, usage });
         });
 
         upstreamRes.on('error', (err) => {
-          const durationMs = Date.now() - record._startTime;
-          const updated = store.update(record.id, { status: 'error', error: err.message, durationMs });
-          sse.emit('request:error', updated);
-          if (!res.headersSent) {
-            res.writeHead(502);
-            res.end(JSON.stringify({ error: err.message }));
-          }
+          if (!res.headersSent) { res.writeHead(502); res.end(JSON.stringify({ error: err.message })); }
+          finalize('error', { error: err.message });
         });
       });
 
       upstreamReq.on('error', (err) => {
-        const durationMs = Date.now() - record._startTime;
-        const updated = store.update(record.id, { status: 'error', error: err.message, durationMs });
-        sse.emit('request:error', updated);
         if (!res.headersSent) {
           res.writeHead(502, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: `Upstream error: ${err.message}` }));
         }
+        finalize('error', { error: err.message });
+      });
+
+      // Client disconnected (e.g. Codex timed out) — abort upstream and mark done
+      req.on('close', () => {
+        upstreamReq.destroy();
+        finalize('complete');
       });
 
       upstreamReq.write(rawBody);
