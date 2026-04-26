@@ -74,13 +74,19 @@ pre{background:#181818;border:1px solid #2a2a2a;padding:12px;border-radius:4px;f
 /* JSON syntax */
 .j-k{color:#9cdcfe}.j-s{color:#ce9178}.j-n{color:#b5cea8}.j-b{color:#569cd6}.j-nl{color:#569cd6}.j-idx{color:#555;font-size:11px}
 /* collapsible tree */
-.j-tree{background:#181818;border:1px solid #2a2a2a;padding:12px;border-radius:4px;font-size:12px;line-height:1.7;overflow-x:auto}
-.j-tree div{white-space:nowrap}
+.j-tree{background:#181818;border:1px solid #2a2a2a;padding:12px;border-radius:4px;font-size:12px;line-height:1.7}
+.j-tree>div,.j-children>div{white-space:nowrap}
+.j-tree div.j-multiline{white-space:normal}
+.j-s-ml{white-space:pre-wrap;word-break:break-word;display:inline-block;vertical-align:top;max-width:100%}
 .j-toggle{display:inline-block;width:14px;text-align:center;font-size:10px;color:#555;cursor:pointer;user-select:none}
 .j-toggle:hover{color:#aaa}
 .j-summary{color:#555;font-size:11px;font-style:italic;cursor:pointer}
 .j-summary:hover{color:#888}
 .j-children{padding-left:20px;border-left:1px solid #222}
+.sse-block{margin:4px 0 8px;padding:4px 8px;border-left:2px solid #3a3a3a}
+.sse-event{color:#4ec9b0;font-size:11px;margin-bottom:2px;font-style:italic}
+.sse-data-raw{color:#ce9178;white-space:pre-wrap;word-break:break-word}
+.j-tree-inline{background:transparent!important;border:none!important;padding:2px 0!important;border-radius:0!important;margin:0}
 </style>
 </head>
 <body>
@@ -173,6 +179,57 @@ function getStreamedText(r) {
   return r.chunks.map(c => extractText(c)).join('');
 }
 
+// ── SSE / inline-JSON rendering ───────────────────────────────────────────────
+
+function isSse(str) {
+  return /^(event:|data:)\s/m.test(str);
+}
+
+function renderSseInto(container, str) {
+  const blocks = [];
+  let current = null;
+  for (const line of str.split('\n')) {
+    if (line.startsWith('event:')) {
+      if (current) blocks.push(current);
+      current = { event: line.slice(6).trim(), data: null };
+    } else if (line.startsWith('data:')) {
+      const raw = line.slice(5).trim();
+      if (!current) current = { event: null, data: raw };
+      else current.data = raw;
+    } else if (line.trim() === '' && current) {
+      blocks.push(current);
+      current = null;
+    }
+  }
+  if (current) blocks.push(current);
+
+  for (const block of blocks) {
+    const blockEl = document.createElement('div');
+    blockEl.className = 'sse-block';
+    if (block.event) {
+      const evEl = document.createElement('div');
+      evEl.className = 'sse-event';
+      evEl.textContent = 'event: ' + block.event;
+      blockEl.appendChild(evEl);
+    }
+    if (block.data) {
+      try {
+        const parsed = JSON.parse(block.data);
+        const jsonWrap = document.createElement('div');
+        jsonWrap.className = 'j-tree j-tree-inline';
+        renderNodeInto(jsonWrap, parsed, null, 0);
+        blockEl.appendChild(jsonWrap);
+      } catch {
+        const dataEl = document.createElement('div');
+        dataEl.className = 'sse-data-raw';
+        dataEl.textContent = 'data: ' + block.data;
+        blockEl.appendChild(dataEl);
+      }
+    }
+    container.appendChild(blockEl);
+  }
+}
+
 // ── collapsible JSON tree ─────────────────────────────────────────────────────
 
 function renderNodeInto(parent, data, key, depth) {
@@ -190,10 +247,38 @@ function renderNodeInto(parent, data, key, depth) {
 
   // primitives
   if (data === null || typeof data !== 'object') {
-    const v = document.createElement('span');
-    v.className = data === null ? 'j-nl' : typeof data === 'boolean' ? 'j-b' : typeof data === 'number' ? 'j-n' : 'j-s';
-    v.textContent = JSON.stringify(data);
-    row.appendChild(v);
+    if (typeof data === 'string' && (data.includes('\n') || data.length > 120)) {
+      row.classList.add('j-multiline');
+      const trimmed = data.trim();
+      if (isSse(data)) {
+        // SSE stream — render structured blocks
+        renderSseInto(row, data);
+      } else if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        // looks like embedded JSON — try to parse and render as tree
+        try {
+          const parsed = JSON.parse(trimmed);
+          const jsonWrap = document.createElement('div');
+          jsonWrap.className = 'j-tree j-tree-inline';
+          renderNodeInto(jsonWrap, parsed, null, 0);
+          row.appendChild(jsonWrap);
+        } catch {
+          const v = document.createElement('span');
+          v.className = 'j-s j-s-ml';
+          v.textContent = '"' + data + '"';
+          row.appendChild(v);
+        }
+      } else {
+        const v = document.createElement('span');
+        v.className = 'j-s j-s-ml';
+        v.textContent = '"' + data + '"';
+        row.appendChild(v);
+      }
+    } else {
+      const v = document.createElement('span');
+      v.className = data === null ? 'j-nl' : typeof data === 'boolean' ? 'j-b' : typeof data === 'number' ? 'j-n' : 'j-s';
+      v.textContent = JSON.stringify(data);
+      row.appendChild(v);
+    }
     parent.appendChild(row);
     return;
   }
@@ -217,9 +302,11 @@ function renderNodeInto(parent, data, key, depth) {
 
   row.appendChild(Object.assign(document.createElement('span'), {textContent: o}));
 
+  const nameHint = (!isArr && data.name && typeof data.name === 'string' && data.name.length <= 40)
+    ? ` "${data.name}" —` : '';
   const summary = Object.assign(document.createElement('span'), {
     className: 'j-summary',
-    textContent: isArr ? ` [${count} items]` : ` {${count} keys}`,
+    textContent: isArr ? ` [${count} items]` : `${nameHint} {${count} keys}`,
   });
   summary.style.display = startExpanded ? 'none' : '';
   row.appendChild(summary);
