@@ -457,7 +457,7 @@ function renderList() {
 function updateStats() {
   const all = Object.values(records);
   const isAnthropic = r => r.upstream && r.upstream.includes('api.anthropic.com');
-  const isOpenAI    = r => r.upstream && r.upstream.includes('api.openai.com');
+  const isOpenAI    = r => r.upstream && (r.upstream.includes('api.openai.com') || r.upstream.includes('chatgpt.com'));
   const anth  = all.filter(isAnthropic);
   const oai   = all.filter(r => !isAnthropic(r) && isOpenAI(r));
   const local = all.filter(r => !isAnthropic(r) && !isOpenAI(r));
