@@ -5,6 +5,7 @@ const { URL } = require('node:url');
 const store = require('./store');
 const sse = require('./sse');
 const config = require('./config');
+const { mitmHosts } = require('./mitm');
 
 function decompress(buffer, encoding) {
   try {
@@ -95,7 +96,9 @@ function createProxyMiddleware(overrideUrl) {
         model = requestBody.model || 'unknown';
       } catch {}
 
-      const mitmHost = req.headers['x-mitm-host'] || null;
+      // Look up MITM hostname by the incoming socket's remote port (loopback port).
+      // This works for all requests on a keep-alive connection, not just the first one.
+      const mitmHost = mitmHosts.get(req.socket.remotePort) || null;
       const upstream = new URL(resolveUpstreamUrl(model, overrideUrl, mitmHost));
       const isHttps = upstream.protocol === 'https:';
       const transport = isHttps ? https : http;

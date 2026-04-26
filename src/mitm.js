@@ -1,6 +1,5 @@
 const tls = require('node:tls');
 const net = require('node:net');
-const { Transform } = require('node:stream');
 const { execSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -62,23 +61,10 @@ function getCert(hostname) {
   return data;
 }
 
-// Injects X-Mitm-Host header after the first line of the HTTP request.
-// Operates on the first chunk only — headers always arrive in the first segment.
-function injectMitmHost(hostname) {
-  let done = false;
-  return new Transform({
-    transform(chunk, _enc, cb) {
-      if (done) { this.push(chunk); cb(); return; }
-      done = true;
-      const s = chunk.toString('binary');
-      const i = s.indexOf('\r\n');
-      if (i === -1) { this.push(chunk); cb(); return; }
-      const out = s.slice(0, i + 2) + `X-Mitm-Host: ${hostname}\r\n` + s.slice(i + 2);
-      this.push(Buffer.from(out, 'binary'));
-      cb();
-    },
-  });
-}
+// Maps loopback socket localPort → original CONNECT hostname.
+// Used by proxy middleware to route MITM requests to the correct upstream.
+// Keyed by port so it works across all keep-alive requests on the same connection.
+const mitmHosts = new Map();
 
 function createConnectHandler(port) {
   return function onConnect(req, clientSocket, head) {
@@ -127,15 +113,21 @@ function createConnectHandler(port) {
     const loopback = net.connect(port, '127.0.0.1');
     loopback.on('error', () => tlsSocket.destroy());
     loopback.on('connect', () => {
+      // Register hostname by port so proxy middleware can look it up for every
+      // request on this connection (including keep-alive follow-up requests)
+      mitmHosts.set(loopback.localPort, hostname);
       if (head && head.length) loopback.write(head);
-      tlsSocket.pipe(injectMitmHost(hostname)).pipe(loopback);
+      tlsSocket.pipe(loopback);
       loopback.pipe(tlsSocket);
     });
 
     // Propagate closes in both directions so neither side hangs
     tlsSocket.on('close', () => loopback.destroy());
-    loopback.on('close', () => tlsSocket.destroy());
+    loopback.on('close', () => {
+      mitmHosts.delete(loopback.localPort);
+      tlsSocket.destroy();
+    });
   };
 }
 
-module.exports = { setupCA, createConnectHandler };
+module.exports = { setupCA, createConnectHandler, mitmHosts };
