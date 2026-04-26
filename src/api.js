@@ -52,11 +52,11 @@ router.get('/version', (req, res) => {
 });
 
 router.get('/config', (req, res) => {
-  res.json({ mode: config.mode, upstreamUrl: config.upstreamUrl });
+  res.json({ mode: config.mode, upstreamUrl: config.upstreamUrl, openaiUrl: config.openaiUrl });
 });
 
 router.put('/config', (req, res) => {
-  const { upstreamUrl, mode } = req.body || {};
+  const { upstreamUrl, mode, openaiUrl } = req.body || {};
 
   if (mode !== undefined) {
     if (!['auto', 'anthropic', 'local'].includes(mode)) {
@@ -75,8 +75,18 @@ router.put('/config', (req, res) => {
     config.upstreamUrl = upstreamUrl;
   }
 
+  if (openaiUrl !== undefined) {
+    if (typeof openaiUrl !== 'string') {
+      return res.status(400).json({ error: 'openaiUrl must be a string' });
+    }
+    try { new URL(openaiUrl); } catch {
+      return res.status(400).json({ error: 'invalid URL' });
+    }
+    config.openaiUrl = openaiUrl;
+  }
+
   config.save();
-  res.json({ mode: config.mode, upstreamUrl: config.upstreamUrl });
+  res.json({ mode: config.mode, upstreamUrl: config.upstreamUrl, openaiUrl: config.openaiUrl });
 });
 
 module.exports = router;

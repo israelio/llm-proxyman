@@ -55,11 +55,15 @@ function extractUsageFields(u) {
 
 const ANTHROPIC_URL = 'https://api.anthropic.com';
 const ANTHROPIC_MODEL_RE = /sonnet|opus|haiku/i;
+const OPENAI_MODEL_RE = /^gpt-/i;
 
 function resolveUpstreamUrl(model, overrideUrl) {
   if (overrideUrl) return overrideUrl;
   if (config.mode === 'anthropic') return ANTHROPIC_URL;
-  if (config.mode === 'auto' && ANTHROPIC_MODEL_RE.test(model || '')) return ANTHROPIC_URL;
+  if (config.mode === 'auto') {
+    if (ANTHROPIC_MODEL_RE.test(model || '')) return ANTHROPIC_URL;
+    if (OPENAI_MODEL_RE.test(model || '')) return config.openaiUrl;
+  }
   return config.upstreamUrl;
 }
 

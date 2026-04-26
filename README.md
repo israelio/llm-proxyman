@@ -82,6 +82,61 @@ Your existing `ANTHROPIC_API_KEY` is passed through transparently — the proxy 
 
 ---
 
+## Use Case 3: Monitor OpenAI Codex CLI
+
+Intercept and inspect all calls from the [Codex CLI](https://github.com/openai/codex) in real time.
+
+```
+Codex CLI → proxy (:8080) → api.openai.com
+```
+
+The proxy auto-detects `gpt-*` models (in **Auto** mode) and routes them to `api.openai.com`. Your `OPENAI_API_KEY` is forwarded transparently — the proxy never stores it.
+
+### Option A — environment variable (recommended)
+
+```bash
+export OPENAI_BASE_URL="http://127.0.0.1:8080"
+```
+
+Add to `~/.zshrc` or `~/.bashrc` to make it permanent:
+
+```bash
+echo 'export OPENAI_BASE_URL="http://127.0.0.1:8080"' >> ~/.zshrc
+```
+
+Then start Codex as usual — it will route through the proxy automatically.
+
+### Option B — Codex config file
+
+Edit `~/.codex/config.json`:
+
+```json
+{
+  "model": "gpt-4o",
+  "baseUrl": "http://127.0.0.1:8080"
+}
+```
+
+### Start the proxy
+
+```bash
+npm start
+```
+
+No extra flags needed. The proxy is already in **Auto** mode, which routes `gpt-*` models to OpenAI and `claude-*` models to Anthropic.
+
+### Override the OpenAI upstream URL
+
+By default the proxy forwards `gpt-*` calls to `https://api.openai.com`. To override (e.g. for Azure OpenAI or a local OpenAI-compatible server):
+
+```bash
+OPENAI_UPSTREAM_URL=https://my-azure-openai.openai.azure.com npm start
+```
+
+Or set it live in the web UI — there's an **OpenAI upstream URL** field in the toolbar.
+
+---
+
 ## Configuration
 
 All settings via environment variables (or a `.env` file — copy `.env.example`):
@@ -89,7 +144,8 @@ All settings via environment variables (or a `.env` file — copy `.env.example`
 | Variable | Default | Description |
 |---|---|---|
 | `PROXY_PORT` | `8080` | Port for the proxy and web UI |
-| `UPSTREAM_URL` | `http://127.0.0.1:8001` | Upstream LLM or API to forward to |
+| `UPSTREAM_URL` | `http://127.0.0.1:8001` | Default upstream for local LLM or non-matched models |
+| `OPENAI_UPSTREAM_URL` | `https://api.openai.com` | Upstream for `gpt-*` models (auto mode) |
 | `PERSIST` | `false` | Persist request history to SQLite across restarts |
 | `DB_PATH` | `./proxy-history.db` | SQLite file path (when `PERSIST=true`) |
 | `MAX_HISTORY` | `1000` | Max requests kept in memory |

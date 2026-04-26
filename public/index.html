@@ -12,7 +12,8 @@ body{font-family:'SF Mono',Monaco,monospace;background:#111;color:#d4d4d4;height
 .toolbar input{width:180px}
 .toolbar input:focus,.toolbar select:focus{outline:none;border-color:#4a9eff}
 /* upstream input wider */
-#upstream-input{width:260px}
+#upstream-input{width:220px}
+#openai-input{width:220px}
 .btn{background:#252525;border:1px solid #3a3a3a;color:#d4d4d4;padding:4px 10px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px}
 .btn:hover{background:#2f2f2f;border-color:#555}
 .btn.danger{border-color:#5a2222;color:#ff6b6b}
@@ -46,6 +47,7 @@ body{font-family:'SF Mono',Monaco,monospace;background:#111;color:#d4d4d4;height
 .stats-bar .s-val{color:#888}
 .stats-bar .s-anth{color:#c678dd}
 .stats-bar .s-local{color:#4a9eff}
+.stats-bar .s-openai{color:#10a37f}
 .stats-bar .s-sep{color:#333}
 .detail-panel{flex:1;display:flex;flex-direction:column;overflow:hidden}
 .empty{flex:1;display:flex;align-items:center;justify-content:center;color:#333;font-size:13px}
@@ -111,8 +113,11 @@ pre{background:#181818;border:1px solid #2a2a2a;padding:12px;border-radius:4px;f
   <button class="btn" id="btn-auto" onclick="setMode('auto')">Auto</button>
   <button class="btn" id="btn-anthropic" onclick="setMode('anthropic')">Anthropic</button>
   <button class="btn" id="btn-local" onclick="setMode('local')">Local LLM</button>
-  <input id="upstream-input" type="text" placeholder="Custom URL">
+  <input id="upstream-input" type="text" placeholder="Local LLM URL">
   <button class="btn primary" onclick="setUpstream()">Set</button>
+  <div class="sep"></div>
+  <input id="openai-input" type="text" placeholder="OpenAI upstream URL">
+  <button class="btn primary" onclick="setOpenaiUrl()">Set OpenAI</button>
   <span id="cs" class="conn off">&#9679; Disconnected</span>
 </div>
 <div class="main">
@@ -452,23 +457,27 @@ function renderList() {
 function updateStats() {
   const all = Object.values(records);
   const isAnthropic = r => r.upstream && r.upstream.includes('api.anthropic.com');
-  const anth = all.filter(isAnthropic);
-  const local = all.filter(r => !isAnthropic(r));
-  const aIn  = anth.reduce((s,r)=>s+(r.usage?.inputTokens||0),0);
-  const aOut = anth.reduce((s,r)=>s+(r.usage?.outputTokens||0),0);
-  const lIn  = local.reduce((s,r)=>s+(r.usage?.inputTokens||0),0);
-  const lOut = local.reduce((s,r)=>s+(r.usage?.outputTokens||0),0);
-  const n = (v) => v.toLocaleString();
+  const isOpenAI    = r => r.upstream && r.upstream.includes('api.openai.com');
+  const anth  = all.filter(isAnthropic);
+  const oai   = all.filter(r => !isAnthropic(r) && isOpenAI(r));
+  const local = all.filter(r => !isAnthropic(r) && !isOpenAI(r));
+  const sum = (arr, f) => arr.reduce((s,r)=>s+(r.usage?.[f]||0),0);
+  const n = v => v.toLocaleString();
   let html = `<span class="s-val">${all.length} requests</span>`;
-  if (aIn || aOut) {
+  if (sum(anth,'inputTokens') || sum(anth,'outputTokens')) {
     html += `<span class="s-sep">&nbsp;·&nbsp;</span><span class="s-anth">Anthropic</span>`
-          + `<span class="s-label"> in </span><span class="s-val">${n(aIn)}</span>`
-          + `<span class="s-label"> out </span><span class="s-val">${n(aOut)}</span>`;
+          + `<span class="s-label"> in </span><span class="s-val">${n(sum(anth,'inputTokens'))}</span>`
+          + `<span class="s-label"> out </span><span class="s-val">${n(sum(anth,'outputTokens'))}</span>`;
   }
-  if (lIn || lOut) {
+  if (sum(oai,'inputTokens') || sum(oai,'outputTokens')) {
+    html += `<span class="s-sep">&nbsp;·&nbsp;</span><span class="s-openai">OpenAI</span>`
+          + `<span class="s-label"> in </span><span class="s-val">${n(sum(oai,'inputTokens'))}</span>`
+          + `<span class="s-label"> out </span><span class="s-val">${n(sum(oai,'outputTokens'))}</span>`;
+  }
+  if (sum(local,'inputTokens') || sum(local,'outputTokens')) {
     html += `<span class="s-sep">&nbsp;·&nbsp;</span><span class="s-local">Local</span>`
-          + `<span class="s-label"> in </span><span class="s-val">${n(lIn)}</span>`
-          + `<span class="s-label"> out </span><span class="s-val">${n(lOut)}</span>`;
+          + `<span class="s-label"> in </span><span class="s-val">${n(sum(local,'inputTokens'))}</span>`
+          + `<span class="s-label"> out </span><span class="s-val">${n(sum(local,'outputTokens'))}</span>`;
   }
   document.getElementById('sb').innerHTML = html;
 }
@@ -578,6 +587,7 @@ function copyRaw() {
 
 function applyConfig(cfg) {
   if (cfg.upstreamUrl) document.getElementById('upstream-input').value = cfg.upstreamUrl;
+  if (cfg.openaiUrl) document.getElementById('openai-input').value = cfg.openaiUrl;
   const input = document.getElementById('upstream-input');
   input.disabled = cfg.mode === 'anthropic';
   input.style.opacity = cfg.mode === 'anthropic' ? '0.35' : '';
@@ -609,6 +619,12 @@ function setUpstream() {
   putConfig({ mode: 'local', upstreamUrl: val });
 }
 
+function setOpenaiUrl() {
+  const val = document.getElementById('openai-input').value.trim();
+  if (!val) return;
+  putConfig({ openaiUrl: val });
+}
+
 function setMode(mode) {
   // 'anthropic' only changes the mode — upstreamUrl is preserved as the local LLM URL
   putConfig({ mode });
@@ -616,6 +632,9 @@ function setMode(mode) {
 
 document.getElementById('upstream-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') setUpstream();
+});
+document.getElementById('openai-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') setOpenaiUrl();
 });
 
 // ── actions ───────────────────────────────────────────────────────────────────
