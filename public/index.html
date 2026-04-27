@@ -8,7 +8,9 @@
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'SF Mono',Monaco,monospace;background:#111;color:#d4d4d4;height:100vh;display:flex;flex-direction:column;overflow:hidden;font-size:13px}
 .toolbar{display:flex;gap:8px;padding:8px 12px;background:#1a1a1a;border-bottom:1px solid #2a2a2a;align-items:center;flex-wrap:wrap}
+.toolbar-routing{display:flex;gap:8px;padding:8px 12px;background:#1a1a1a;border-bottom:1px solid #2a2a2a;align-items:center}
 .toolbar input,.toolbar select{background:#252525;border:1px solid #3a3a3a;color:#d4d4d4;padding:4px 8px;border-radius:4px;font-family:inherit;font-size:12px}
+.toolbar-routing input{background:#252525;border:1px solid #3a3a3a;color:#d4d4d4;padding:4px 8px;border-radius:4px;font-family:inherit;font-size:12px;width:220px}
 .toolbar input{width:180px}
 .toolbar input:focus,.toolbar select:focus{outline:none;border-color:#4a9eff}
 /* upstream input wider */
@@ -28,7 +30,7 @@ body{font-family:'SF Mono',Monaco,monospace;background:#111;color:#d4d4d4;height
 .conn.off{color:#ff6b6b}
 .main{display:flex;flex:1;overflow:hidden;min-height:0}
 .list-panel{width:300px;min-width:220px;border-right:1px solid #2a2a2a;display:flex;flex-direction:column;overflow:hidden}
-.list-head{padding:6px 12px;font-size:11px;color:#666;border-bottom:1px solid #2a2a2a;display:flex;justify-content:space-between}
+.list-head{padding:6px 12px;font-size:11px;color:#666;border-bottom:1px solid #2a2a2a;display:flex;justify-content:space-between;align-items:center;gap:6px}
 .req-list{flex:1;overflow-y:auto}
 .req-item{padding:8px 12px;border-bottom:1px solid #1e1e1e;cursor:pointer;user-select:none}
 .req-item:hover{background:#1a1a1a}
@@ -106,20 +108,22 @@ pre{background:#181818;border:1px solid #2a2a2a;padding:12px;border-radius:4px;f
   <div class="sep"></div>
   <button class="btn" onclick="doExport('json')">Export JSON</button>
   <button class="btn" onclick="doExport('csv')">Export CSV</button>
-  <button class="btn danger" onclick="doClear()">Clear</button>
-  <button class="btn on" id="btn-autoscroll" onclick="toggleAutoScroll()">Auto Scroll</button>
-  <div class="sep"></div>
+  <span id="cs" class="conn off" style="margin-left:auto">&#9679; Disconnected</span>
+</div>
+<div class="toolbar-routing">
   <button class="btn" id="btn-auto" onclick="setMode('auto')">Auto Routing</button>
-  <button class="btn" id="btn-anthropic" onclick="setMode('anthropic')">Anthropic</button>
   <button class="btn" id="btn-local" onclick="setMode('local')">Local LLM</button>
   <input id="upstream-input" type="text" placeholder="Local LLM URL">
   <button class="btn primary" onclick="setUpstream()">Set</button>
-  <span id="cs" class="conn off">&#9679; Disconnected</span>
 </div>
 <div class="main">
   <div class="list-panel">
     <div class="list-head">
       <span id="rc">0 requests</span>
+      <div style="display:flex;gap:4px;flex-shrink:0">
+        <button class="btn on" id="btn-autoscroll" onclick="toggleAutoScroll()" style="font-size:11px;padding:2px 6px">Auto Scroll</button>
+        <button class="btn danger" onclick="doClear()" style="font-size:11px;padding:2px 6px">Clear</button>
+      </div>
     </div>
     <div class="req-list" id="rl"></div>
   </div>
@@ -671,7 +675,6 @@ function applyConfig(cfg) {
   input.disabled = cfg.mode === 'anthropic';
   input.style.opacity = cfg.mode === 'anthropic' ? '0.35' : '';
   document.getElementById('btn-auto').classList.toggle('on', cfg.mode === 'auto');
-  document.getElementById('btn-anthropic').classList.toggle('on', cfg.mode === 'anthropic');
   document.getElementById('btn-local').classList.toggle('on', cfg.mode === 'local');
 }
 
