@@ -1,9 +1,9 @@
 {
-  "name": "local-llm-proxy",
+  "name": "llm-proxyman",
   "bin": {
-    "local-llm-proxy": "src/index.js"
+    "llm-proxyman": "src/index.js"
   },
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Local proxy for Claude Code with real-time web UI",
   "main": "src/index.js",
   "scripts": {
@@ -20,7 +20,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/ohadot/local-llm-proxy"
+    "url": "https://github.com/israelio/llm-proxyman"
   },
   "license": "MIT",
   "keywords": [
