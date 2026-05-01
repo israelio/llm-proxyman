@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 
-const CERTS_DIR = path.join(os.homedir(), '.local-llm-proxy', 'certs');
+const CERTS_DIR = path.join(os.homedir(), '.llm-proxyman', 'certs');
 const CA_KEY  = path.join(CERTS_DIR, 'ca.key');
 const CA_CERT = path.join(CERTS_DIR, 'ca.crt');
 const SRV_KEY = path.join(CERTS_DIR, 'server.key');
@@ -28,16 +28,16 @@ function checkCATrusted(caCertPath) {
 
   try {
     if (osName === 'macos') {
-      execSync(`security find-certificate -c "local-llm-proxy CA" /Library/Keychains/System.keychain 2>/dev/null`, { stdio: 'pipe' });
+      execSync(`security find-certificate -c "llm-proxyman CA" /Library/Keychains/System.keychain 2>/dev/null`, { stdio: 'pipe' });
       return true;
     }
     if (osName === 'linux') {
       const out = execSync(`openssl x509 -noout -text -in "${caCertPath}" 2>/dev/null`, { encoding: 'utf8' });
-      if (!out.includes('local-llm-proxy CA')) return false;
+      if (!out.includes('llm-proxyman CA')) return false;
       // Check if it's in the system trust store
       const storePaths = [
-        '/etc/ssl/certs/local-llm-proxy.pem',
-        '/usr/share/ca-certificates/local/local-llm-proxy.crt',
+        '/etc/ssl/certs/llm-proxyman.pem',
+        '/usr/share/ca-certificates/local/llm-proxyman.crt',
       ];
       for (const sp of storePaths) {
         try {
@@ -47,7 +47,7 @@ function checkCATrusted(caCertPath) {
       return false;
     }
     if (osName === 'windows') {
-      execSync('powershell -NoProfile -Command "Get-ChildItem cert:\\Root\\,cert:\\Trust\\ | Where-Object { $_.Subject -like \'*local-llm-proxy*\' }" 2>&1 | Out-Null', { stdio: 'pipe' });
+      execSync('powershell -NoProfile -Command "Get-ChildItem cert:\\Root\\,cert:\\Trust\\ | Where-Object { $_.Subject -like \'*llm-proxyman*\' }" 2>&1 | Out-Null', { stdio: 'pipe' });
       return true;
     }
   } catch {
@@ -66,7 +66,7 @@ function printTrustInstructions(caCertPath) {
     console.log('[MITM] Then restart the proxy.');
   } else if (osName === 'linux') {
     console.log('[MITM] Trust the CA certificate:');
-    console.log(`  sudo cp "${caCertPath}" /usr/local/share/ca-certificates/local-llm-proxy.crt`);
+    console.log(`  sudo cp "${caCertPath}" /usr/local/share/ca-certificates/llm-proxyman.crt`);
     console.log('  sudo update-ca-certificates');
     console.log('[MITM] Then restart the proxy.');
   } else if (osName === 'windows') {
@@ -85,7 +85,7 @@ function setupCA() {
   if (!fs.existsSync(CA_CERT)) {
     console.log('[MITM] Generating CA certificate...');
     run(`openssl genrsa -out "${CA_KEY}" 2048`);
-    run(`openssl req -new -x509 -days 3650 -key "${CA_KEY}" -out "${CA_CERT}" -subj "/CN=local-llm-proxy CA/O=local-llm-proxy"`);
+    run(`openssl req -new -x509 -days 3650 -key "${CA_KEY}" -out "${CA_CERT}" -subj "/CN=llm-proxyman CA/O=llm-proxyman"`);
     run(`openssl genrsa -out "${SRV_KEY}" 2048`);
   }
 

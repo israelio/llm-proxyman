@@ -1,4 +1,4 @@
-# local-llm-proxy
+# llm-proxyman
 
 A local HTTP proxy that intercepts LLM API calls from tools like **Claude Code**, **Codex CLI**, and any OpenAI/Anthropic-compatible client. Routes traffic through a local model server (Ollama, LM Studio, vLLM) or the real cloud API — while exposing a real-time web UI to inspect every request, response, token count, and timing.
 
@@ -182,11 +182,11 @@ Or set it live in the web UI — there's an **OpenAI upstream URL** field in the
 Build and run with Docker:
 
 ```bash
-docker build -t local-llm-proxy .
+docker build -t llm-proxyman .
 docker run -p 8080:8080 \
   -e UPSTREAM_URL=https://api.anthropic.com \
   -e ANTHROPIC_API_KEY=your-key \
-  local-llm-proxy
+  llm-proxyman
 ```
 
 **Run with a local LLM:**
@@ -195,7 +195,7 @@ docker run -p 8080:8080 \
 docker run -p 8080:8080 \
   --add-host=host.docker.internal:host-gateway \
   -e UPSTREAM_URL=http://host.docker.internal:8001 \
-  local-llm-proxy
+  llm-proxyman
 ```
 
 `--add-host=host.docker.internal:host-gateway` resolves to the host machine's IP so the container can reach services on your local machine (works on macOS, Linux, and Windows).
@@ -205,7 +205,7 @@ On Linux, you can also use `--network host` to share the host network namespace 
 ```bash
 docker run --network host \
   -e UPSTREAM_URL=http://127.0.0.1:8001 \
-  local-llm-proxy
+  llm-proxyman
 ```
 
 With `--network host`, `127.0.0.1` points to the host, so no extra hostname needed.
@@ -214,10 +214,10 @@ With `--network host`, `127.0.0.1` points to the host, so no extra hostname need
 
 ```bash
 docker run -p 8080:8080 \
-  -v proxy-data:/root/.local-llm-proxy \
+  -v proxy-data:/root/.llm-proxyman \
   -e PERSIST=true \
-  -e DB_PATH=/root/.local-llm-proxy/proxy-history.db \
-  local-llm-proxy
+  -e DB_PATH=/root/.llm-proxyman/proxy-history.db \
+  llm-proxyman
 ```
 
 All endpoints are exposed on port **8080**:

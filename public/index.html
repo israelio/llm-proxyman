@@ -24,6 +24,19 @@ body{font-family:'SF Mono',Monaco,monospace;background:#111;color:#d4d4d4;height
 .btn.on{border-color:#4ec94e;color:#4ec94e;background:#0a1a0a}
 .btn.on:hover{background:#0f2a0f}
 #app-title{font-size:13px;font-weight:600;color:#c0c0c0;white-space:nowrap;flex-shrink:0}
+#app-title a{color:#4a9eff;text-decoration:none;font-weight:600}#app-title a:hover{color:#7ab8ff}
+.about-link{font-size:11px;color:#555;cursor:pointer;white-space:nowrap;flex-shrink:0}
+.about-link:hover{color:#aaa}
+.about-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);z-index:1000;align-items:center;justify-content:center}
+.about-overlay.open{display:flex}
+.about-box{background:#1a1a1a;border:1px solid #3a3a3a;border-radius:8px;padding:24px 32px;max-width:420px;text-align:center}
+.about-box h2{font-size:16px;color:#d4d4d4;margin-bottom:4px}
+.about-box .av{font-size:11px;color:#555;margin-bottom:12px}
+.about-box p{font-size:12px;color:#888;line-height:1.6;margin-bottom:8px}
+.about-box a{color:#4a9eff;text-decoration:none}
+.about-box a:hover{color:#7ab8ff}
+.about-close{margin-top:12px;background:#252525;border:1px solid #3a3a3a;color:#888;padding:4px 16px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px}
+.about-close:hover{color:#d4d4d4;border-color:#555}
 .sep{width:1px;background:#2a2a2a;height:20px;flex-shrink:0}
 .conn{margin-left:auto;font-size:11px;white-space:nowrap}
 .conn.on{color:#4ec94e}
@@ -94,7 +107,8 @@ pre{background:#181818;border:1px solid #2a2a2a;padding:12px;border-radius:4px;f
 </head>
 <body>
 <div class="toolbar">
-  <span id="app-title">Local LLM Proxy <span id="app-version" style="font-size:10px;color:#444"></span></span>
+  <span id="app-title">LLM Proxyman <span id="app-version" style="font-size:10px;color:#444"></span></span>
+  <span class="about-link" onclick="toggleAbout()">About</span>
   <div class="sep"></div>
   <input id="q" type="text" placeholder="Search messages...">
   <select id="mf"><option value="">All models</option></select>
@@ -795,6 +809,7 @@ document.getElementById('sf').addEventListener('change', renderList);
 // load version
 fetch('/api/version').then(r=>r.json()).then(d => {
   document.getElementById('app-version').textContent = 'v' + d.version;
+  document.getElementById('about-version').textContent = 'v' + d.version;
 });
 
 // load current config (mode + upstream)
@@ -813,6 +828,22 @@ fetch('/api/requests')
   });
 
 connect();
+
+// ── about ───────────────────────────────────────────────────────────────────────
+
+function toggleAbout() {
+  const el = document.getElementById('about-overlay');
+  el.classList.toggle('open');
+}
 </script>
+<div class="about-overlay" id="about-overlay" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="about-box">
+    <h2>LLM Proxyman</h2>
+    <div class="av" id="about-version"></div>
+    <p>Created by <strong>Ohad Israeli</strong></p>
+    <p><a href="https://github.com/israelio/llm-proxyman" target="_blank">github.com/israelio/llm-proxyman</a></p>
+    <button class="about-close" onclick="toggleAbout()">Close</button>
+  </div>
+</div>
 </body>
 </html>
