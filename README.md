@@ -155,6 +155,58 @@ Or set it live in the web UI — there's an **OpenAI upstream URL** field in the
 
 ---
 
+## Docker
+
+Build and run with Docker:
+
+```bash
+docker build -t local-llm-proxy .
+docker run -p 8080:8080 \
+  -e UPSTREAM_URL=https://api.anthropic.com \
+  -e ANTHROPIC_API_KEY=your-key \
+  local-llm-proxy
+```
+
+**Run with a local LLM:**
+
+```bash
+docker run -p 8080:8080 \
+  --add-host=host.docker.internal:host-gateway \
+  -e UPSTREAM_URL=http://host.docker.internal:8001 \
+  local-llm-proxy
+```
+
+`--add-host=host.docker.internal:host-gateway` resolves to the host machine's IP so the container can reach services on your local machine (works on macOS, Linux, and Windows).
+
+On Linux, you can also use `--network host` to share the host network namespace directly:
+
+```bash
+docker run --network host \
+  -e UPSTREAM_URL=http://127.0.0.1:8001 \
+  local-llm-proxy
+```
+
+With `--network host`, `127.0.0.1` points to the host, so no extra hostname needed.
+
+**Run with persistence:**
+
+```bash
+docker run -p 8080:8080 \
+  -v proxy-data:/root/.local-llm-proxy \
+  -e PERSIST=true \
+  -e DB_PATH=/root/.local-llm-proxy/proxy-history.db \
+  local-llm-proxy
+```
+
+All endpoints are exposed on port **8080**:
+
+| Endpoint | Purpose |
+|---|---|
+| `http://localhost:8080` | Web UI |
+| `http://localhost:8080/events` | SSE real-time stream |
+| `http://localhost:8080/api/*` | REST API |
+| `http://localhost:8080/v1/*` | Proxy target |
+
 ## Configuration
 
 All settings via environment variables (or a `.env` file — copy `.env.example`):
