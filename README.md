@@ -1,6 +1,28 @@
 # local-llm-proxy
 
-A local HTTP proxy that intercepts Claude Code traffic and exposes a real-time web UI to inspect all requests and responses, token usage, and timing.
+A local HTTP proxy that intercepts LLM API calls from tools like **Claude Code**, **Codex CLI**, and any OpenAI/Anthropic-compatible client. Routes traffic through a local model server (Ollama, LM Studio, vLLM) or the real cloud API — while exposing a real-time web UI to inspect every request, response, token count, and timing.
+
+## Features
+
+- **Real-time web UI** — live request list with status, model, duration, and token counts
+- **Response viewer** — streaming display of LLM outputs as they arrive
+- **Token tracker** — per-request input / output / total token breakdown
+- **Raw JSON inspector** — full request and response payloads with copy-to-clipboard
+- **Search and filter** — narrow by model, status code, or keyword
+- **Export** — save request history as JSON or CSV
+- **MITM mode** — intercept HTTPS traffic from tools that enforce certificate pinning
+- **Persistence** — optional SQLite history across restarts
+- **Multi-provider** — Claude (Anthropic), GPT (OpenAI), and any local OpenAI-compatible server
+
+## Screenshots
+
+### Tokens View — track consumption from local LLMs, Anthropic, and OpenAI
+
+![Tokens View](public/tokens-view.png)
+
+### Response View — live streaming output inspection
+
+![Response View](public/response-view.png)
 
 ## Install
 
