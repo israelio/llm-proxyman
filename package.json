@@ -3,7 +3,7 @@
   "bin": {
     "local-llm-proxy": "src/index.js"
   },
-  "version": "0.0.16",
+  "version": "0.0.17",
   "description": "Local proxy for Claude Code with real-time web UI",
   "main": "src/index.js",
   "scripts": {
