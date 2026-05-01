@@ -26,7 +26,29 @@ A local HTTP proxy that intercepts LLM API calls from tools like **Claude Code**
 
 ## Install
 
+**Global install (CLI):**
+
 ```bash
+npm install -g llm-proxyman
+```
+
+**Run without installing:**
+
+```bash
+npx -g llm-proxyman
+```
+
+**Or use npm exec:**
+
+```bash
+npm exec -g llm-proxyman
+```
+
+**Local development:**
+
+```bash
+git clone https://github.com/israelio/llm-proxyman.git
+cd llm-proxyman
 npm install
 ```
 
