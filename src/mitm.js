@@ -14,6 +14,71 @@ const certCache = new Map();
 
 function run(cmd) { execSync(cmd, { stdio: 'pipe' }); }
 
+function detectOS() {
+  const platform = os.platform();
+  if (platform === 'darwin') return 'macos';
+  if (platform === 'linux') return 'linux';
+  if (platform === 'win32') return 'windows';
+  return 'unknown';
+}
+
+function checkCATrusted(caCertPath) {
+  const osName = detectOS();
+  if (osName === 'unknown') return false;
+
+  try {
+    if (osName === 'macos') {
+      execSync(`security find-certificate -c "local-llm-proxy CA" /Library/Keychains/System.keychain 2>/dev/null`, { stdio: 'pipe' });
+      return true;
+    }
+    if (osName === 'linux') {
+      const out = execSync(`openssl x509 -noout -text -in "${caCertPath}" 2>/dev/null`, { encoding: 'utf8' });
+      if (!out.includes('local-llm-proxy CA')) return false;
+      // Check if it's in the system trust store
+      const storePaths = [
+        '/etc/ssl/certs/local-llm-proxy.pem',
+        '/usr/share/ca-certificates/local/local-llm-proxy.crt',
+      ];
+      for (const sp of storePaths) {
+        try {
+          if (fs.existsSync(sp)) return true;
+        } catch {}
+      }
+      return false;
+    }
+    if (osName === 'windows') {
+      execSync('powershell -NoProfile -Command "Get-ChildItem cert:\\Root\\,cert:\\Trust\\ | Where-Object { $_.Subject -like \'*local-llm-proxy*\' }" 2>&1 | Out-Null', { stdio: 'pipe' });
+      return true;
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
+function printTrustInstructions(caCertPath) {
+  const osName = detectOS();
+  console.log(`[MITM] CA cert generated: ${caCertPath}`);
+
+  if (osName === 'macos') {
+    console.log('[MITM] Trust the CA certificate once with:');
+    console.log(`  sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "${caCertPath}"`);
+    console.log('[MITM] Then restart the proxy.');
+  } else if (osName === 'linux') {
+    console.log('[MITM] Trust the CA certificate:');
+    console.log(`  sudo cp "${caCertPath}" /usr/local/share/ca-certificates/local-llm-proxy.crt`);
+    console.log('  sudo update-ca-certificates');
+    console.log('[MITM] Then restart the proxy.');
+  } else if (osName === 'windows') {
+    console.log('[MITM] Trust the CA certificate by double-clicking:');
+    console.log(`  ${caCertPath}`);
+    console.log('[MITM] Then install → Trust in Trusted Root Certification Authorities.');
+    console.log('[MITM] Then restart the proxy.');
+  } else {
+    console.log(`[MITM] Manually trust: ${caCertPath}`);
+  }
+}
+
 function setupCA() {
   fs.mkdirSync(CERTS_DIR, { recursive: true });
 
@@ -22,9 +87,13 @@ function setupCA() {
     run(`openssl genrsa -out "${CA_KEY}" 2048`);
     run(`openssl req -new -x509 -days 3650 -key "${CA_KEY}" -out "${CA_CERT}" -subj "/CN=local-llm-proxy CA/O=local-llm-proxy"`);
     run(`openssl genrsa -out "${SRV_KEY}" 2048`);
-    console.log(`[MITM] CA ready: ${CA_CERT}`);
-    console.log('[MITM] Trust it once with:');
-    console.log(`  sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "${CA_CERT}"`);
+  }
+
+  const trusted = checkCATrusted(CA_CERT);
+  if (!trusted) {
+    printTrustInstructions(CA_CERT);
+  } else {
+    console.log(`[MITM] CA cert already trusted: ${CA_CERT}`);
   }
 
   return CA_CERT;
