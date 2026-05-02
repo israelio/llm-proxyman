@@ -2,6 +2,8 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.12](https://github.com/israelio/llm-proxyman/compare/v0.1.10...v0.1.12) (2026-05-02)
+
 ### [0.1.10](https://github.com/israelio/llm-proxyman/compare/v0.1.8...v0.1.10) (2026-05-02)
 
 ### 0.1.8 (2026-05-02)
