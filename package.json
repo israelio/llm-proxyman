@@ -3,7 +3,7 @@
   "bin": {
     "llm-proxyman": "src/index.js"
   },
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "Local HTTP proxy that intercepts and inspects LLM API calls from Claude Code, Codex CLI, and OpenAI/Anthropic clients. Real-time web UI to view requests, responses, tokens, and timing. Routes to local LLM servers (Ollama, LM Studio, vLLM) or cloud APIs. MITM mode, SQLite persistence.",
   "main": "src/index.js",
   "scripts": {
