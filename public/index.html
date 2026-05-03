@@ -11,6 +11,10 @@ body{font-family:'SF Mono',Monaco,monospace;background:#111;color:#d4d4d4;height
 .toolbar-routing{display:flex;gap:8px;padding:8px 12px;background:#1a1a1a;border-bottom:1px solid #2a2a2a;align-items:center}
 .toolbar input,.toolbar select{background:#252525;border:1px solid #3a3a3a;color:#d4d4d4;padding:4px 8px;border-radius:4px;font-family:inherit;font-size:12px}
 .toolbar-routing input{background:#252525;border:1px solid #3a3a3a;color:#d4d4d4;padding:4px 8px;border-radius:4px;font-family:inherit;font-size:12px;width:220px}
+/* launch toolbar */
+.toolbar-launch{display:flex;gap:8px;padding:8px 12px;background:#1a1a1a;border-bottom:1px solid #2a2a2a;align-items:center}
+.toolbar-launch input{background:#252525;border:1px solid #3a3a3a;color:#d4d4d4;padding:4px 8px;border-radius:4px;font-family:inherit;font-size:12px;width:300px}
+.toolbar-launch input:focus{outline:none;border-color:#4a9eff}
 .toolbar input{width:180px}
 .toolbar input:focus,.toolbar select:focus{outline:none;border-color:#4a9eff}
 /* upstream input wider */
@@ -87,6 +91,14 @@ pre{background:#181818;border:1px solid #2a2a2a;padding:12px;border-radius:4px;f
 .tok-card .val{font-size:28px;font-weight:700;color:#4a9eff}
 .tok-card .lbl{font-size:11px;color:#555;margin-top:4px}
 .tok-meta{font-size:12px;color:#666;line-height:1.8}
+/* Analysis pane */
+.analysis-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+.analysis-section{background:#181818;border:1px solid #2a2a2a;border-radius:4px;padding:12px}
+.analysis-section-title{font-size:12px;font-weight:600;color:#4a9eff;margin:0 0 8px 0;text-transform:uppercase;letter-spacing:0.5px}
+.analysis-row{display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid #1a1a1a}
+.analysis-row:last-child{border-bottom:none}
+.analysis-row .label{color:#888}
+.analysis-row .value{color:#ccc;font-family:var(--mono);margin-left:12px}
 /* JSON syntax */
 .j-k{color:#9cdcfe}.j-s{color:#ce9178}.j-n{color:#b5cea8}.j-b{color:#569cd6}.j-nl{color:#569cd6}.j-idx{color:#555;font-size:11px}
 /* collapsible tree */
@@ -129,6 +141,16 @@ pre{background:#181818;border:1px solid #2a2a2a;padding:12px;border-radius:4px;f
   <button class="btn" id="btn-local" onclick="setMode('local')">Local LLM</button>
   <input id="upstream-input" type="text" placeholder="Local LLM URL">
   <button class="btn primary" onclick="setUpstream()">Set</button>
+</div>
+<div class="toolbar-launch">
+  <span style="font-size:11px;color:#666;white-space:nowrap">Working dir:</span>
+  <input id="workdir-input" type="text" placeholder="e.g. ~/projects/my-app">
+  <button class="btn" onclick="browseFolder()">Browse</button>
+  <button class="btn" onclick="createFolder()">Create</button>
+  <div class="sep"></div>
+  <button class="btn" id="btn-launch-claude-wd" onclick="launchTool('claude')">Claude</button>
+  <button class="btn" id="btn-launch-claude-local-wd" onclick="launchTool('claude-local')">Claude Local</button>
+  <button class="btn" id="btn-launch-codex-wd" onclick="launchTool('codex')">Codex</button>
 </div>
 <div class="main">
   <div class="list-panel">
@@ -504,6 +526,327 @@ function populateJsonTrees(r) {
     if (prettyMode) buildJsonTree(rawEl, rawData);
     else rawEl.innerHTML = `<pre>${esc(JSON.stringify(rawData, null, 2))}</pre>`;
   }
+
+  // analysis pane
+  const analysisEl = document.getElementById('analysis-content');
+  if (analysisEl) {
+    analysisEl.innerHTML = renderAnalysis(r);
+  }
+}
+
+function renderAnalysis(r) {
+  const req = r.request;
+  const resp = r.response;
+  const reqText = req ? JSON.stringify(req) : '';
+  const respText = resp ? (typeof resp === 'string' ? resp : JSON.stringify(resp)) : '';
+
+  // parse SSE response for cache/tokens info
+  let sseCacheCreation = 0;
+  let sseCacheRead = 0;
+  let sseInputTokens = 0;
+  let sseOutputTokens = 0;
+  if (typeof resp === 'string' && isSse(resp)) {
+    const sseParsed = parseSseEvents(resp);
+    const msgStart = sseParsed['message_start'];
+    if (msgStart?.message?.usage) {
+      const u = msgStart.message.usage;
+      sseCacheCreation = u.cache_creation_input_tokens || 0;
+      sseCacheRead = u.cache_read_input_tokens || 0;
+      sseInputTokens = u.input_tokens || 0;
+    }
+    const msgDelta = sseParsed['message_delta'];
+    if (msgDelta?.usage) {
+      sseOutputTokens = msgDelta.usage.output_tokens || 0;
+    }
+  }
+
+  // request stats
+  const reqChars = reqText.length;
+  const reqLines = reqText.split('\n').length;
+
+  // response stats
+  const respChars = respText.length;
+  const respLines = respText.split('\n').length;
+
+  // message analysis
+  const messages = (req?.messages || req?.input || []);
+  const msgCount = messages.length;
+  const roles = {};
+  let systemPrompt = '';
+  let systemPromptChars = 0;
+  let systemItemCount = 0;
+  let toolCount = 0;
+  let toolDescChars = 0;
+  let toolNames = [];
+  let imageCount = 0;
+  let fileCount = 0;
+  let totalContentChars = 0;
+  let cacheBlocks = 0;
+
+  // system prompt (Claude format: array in top-level 'system' field)
+  const sysItems = req?.system || [];
+  if (Array.isArray(sysItems)) {
+    systemItemCount = sysItems.length;
+    sysItems.forEach(s => {
+      if (typeof s === 'string') { systemPromptChars += s.length; }
+      else if (typeof s === 'object') {
+        if (s.text) systemPromptChars += s.text.length;
+        if (s.cache_control) cacheBlocks++;
+      }
+    });
+    systemPrompt = sysItems.map(s => typeof s === 'string' ? s : (s.text || '')).join('\n');
+  }
+  // Also check for system in messages (OpenAI format)
+  messages.forEach((m) => {
+    if (m.role === 'system') {
+      if (typeof m.content === 'string') systemPromptChars += m.content.length;
+      else if (Array.isArray(m.content)) {
+        m.content.forEach(c => { if (c.text) systemPromptChars += c.text.length; if (c.cache_control) cacheBlocks++; });
+      }
+    }
+  });
+
+  messages.forEach((m, i) => {
+    const role = m.role || m.type || 'unknown';
+    roles[role] = (roles[role] || 0) + 1;
+    totalContentChars += estimateMessageContentSize(m);
+
+    // detect images/files
+    if (Array.isArray(m.content)) {
+      m.content.forEach(c => {
+        if (c.image_url || c.image) imageCount++;
+        if (c.file_url || c.file) fileCount++;
+        if (c.cache_control) cacheBlocks++;
+      });
+    }
+  });
+
+  // top-level tools
+  if (req.tools && Array.isArray(req.tools)) {
+    toolCount += req.tools.length;
+    req.tools.forEach(t => {
+      toolDescChars += JSON.stringify(t).length;
+      toolNames.push(t.name || t.function?.name || '?');
+    });
+  }
+
+  // thinking
+  const thinking = req?.thinking;
+  const thinkingEnabled = thinking && thinking.type === 'enabled';
+  const thinkingBudget = thinkingEnabled ? (thinking.budget_tokens || 0) : 0;
+
+  // config
+  const maxTokens = req?.max_tokens || 0;
+  const streamEnabled = req?.stream === true;
+  const metadata = req?.metadata || {};
+
+  // context size = system + all message content
+  const contextChars = systemPromptChars + totalContentChars;
+
+  // response output analysis
+  let outputText = '';
+  let outputItems = 0;
+  let stopReason = '';
+  let toolUseCount = 0;
+  let thinkingOutputChars = 0;
+  let roleCounts = {};
+  let longestMsgChars = 0;
+  let msgChars = [];
+
+  if (resp && typeof resp === 'object' && !Array.isArray(resp)) {
+    const outArr = resp.output || [];
+    outputItems = outArr.length;
+    outputText = extractOutputText(resp);
+    stopReason = resp.stop_reason || '';
+    // count tool_use blocks in response
+    outArr.forEach(item => {
+      if (item.type === 'message' && Array.isArray(item.content)) {
+        item.content.forEach(c => {
+          if (c.type === 'tool_use') toolUseCount++;
+          if (c.type === 'thinking') thinkingOutputChars += (c.thinking || '').length;
+        });
+      }
+    });
+  }
+
+  // message stats for efficiency analysis
+  messages.forEach(m => {
+    const role = m.role || 'unknown';
+    roleCounts[role] = (roleCounts[role] || 0) + 1;
+    let chars = 0;
+    if (typeof m.content === 'string') chars = m.content.length;
+    else if (Array.isArray(m.content)) {
+      m.content.forEach(c => { if (c.text) chars += c.text.length; });
+    }
+    msgChars.push(chars);
+    if (chars > longestMsgChars) longestMsgChars = chars;
+  });
+  const avgMsgChars = msgChars.length ? Math.round(msgChars.reduce((a, b) => a + b, 0) / msgChars.length) : 0;
+
+  // cache efficiency
+  const totalCacheTokens = sseCacheCreation + sseCacheRead;
+  const cacheHitRatio = totalCacheTokens > 0 ? Math.round((sseCacheRead / totalCacheTokens) * 100) : null;
+
+  // streaming response
+  if (typeof resp === 'string' && isSse(resp)) {
+    const sseData = resp.split('\n').filter(l => l.startsWith('data: ')).length;
+    return `
+      <div class="analysis-grid">
+        <div class="analysis-section">
+          <h4 class="analysis-section-title">Request</h4>
+          <div class="analysis-row"><span class="label">Characters</span><span class="value">${fmtNumber(reqChars)}</span></div>
+          <div class="analysis-row"><span class="label">Lines (minified JSON)</span><span class="value">${fmtNumber(reqLines)}</span></div>
+          <div class="analysis-row"><span class="label">Messages</span><span class="value">${msgCount}</span></div>
+          <div class="analysis-row"><span class="label">Role distribution</span><span class="value">${Object.entries(roles).map(([k,v])=>`${k}: ${v}`).join(', ')}</span></div>
+          ${systemPromptChars > 0 ? `<div class="analysis-row"><span class="label">System prompt</span><span class="value">${fmtNumber(systemPromptChars)} chars</span></div>` : ''}
+          ${systemItemCount > 0 ? `<div class="analysis-row"><span class="label">System items</span><span class="value">${systemItemCount}</span></div>` : ''}
+          ${toolCount > 0 ? `<div class="analysis-row"><span class="label">Tools</span><span class="value">${toolCount} (${fmtNumber(toolDescChars)} chars desc)</span></div>` : ''}
+          ${toolNames.length > 0 ? `<div class="analysis-row"><span class="label">Tool names</span><span class="value">${toolNames.join(', ')}</span></div>` : ''}
+          ${imageCount > 0 ? `<div class="analysis-row"><span class="label">Images</span><span class="value">${imageCount}</span></div>` : ''}
+          ${fileCount > 0 ? `<div class="analysis-row"><span class="label">Files</span><span class="value">${fileCount}</span></div>` : ''}
+          <div class="analysis-row"><span class="label">Context size (sys+msgs)</span><span class="value">${fmtNumber(contextChars)} chars</span></div>
+          ${cacheBlocks > 0 ? `<div class="analysis-row"><span class="label">Cache blocks</span><span class="value">${cacheBlocks}</span></div>` : ''}
+        </div>
+        <div class="analysis-section">
+          <h4 class="analysis-section-title">Response</h4>
+          <div class="analysis-row"><span class="label">Characters</span><span class="value">${fmtNumber(respChars)}</span></div>
+          <div class="analysis-row"><span class="label">SSE data lines</span><span class="value">${sseData}</span></div>
+          ${sseCacheCreation > 0 || sseCacheRead > 0 ? `<div class="analysis-row"><span class="label">Cache</span><span class="value">creation: ${fmtNumber(sseCacheCreation)}, read: ${fmtNumber(sseCacheRead)}</span></div>` : ''}
+        </div>
+        <div class="analysis-section">
+          <h4 class="analysis-section-title">Efficiency</h4>
+          <div class="analysis-row"><span class="label">Longest message</span><span class="value">${fmtNumber(longestMsgChars)} chars</span></div>
+          <div class="analysis-row"><span class="label">Avg message size</span><span class="value">${fmtNumber(avgMsgChars)} chars</span></div>
+          ${cacheHitRatio !== null ? `<div class="analysis-row"><span class="label">Cache hit ratio</span><span class="value">${cacheHitRatio}%</span></div>` : ''}
+        </div>
+        <div class="analysis-section">
+          <h4 class="analysis-section-title">Tokens</h4>
+          <div class="analysis-row"><span class="label">Input</span><span class="value">${fmtNumber(r.usage?.inputTokens||0)}</span></div>
+          <div class="analysis-row"><span class="label">Output</span><span class="value">${fmtNumber(r.usage?.outputTokens||0)}</span></div>
+          <div class="analysis-row"><span class="label">Total</span><span class="value">${fmtNumber(r.usage?.totalTokens||0)}</span></div>
+          ${r.usage?.inputTokens && r.usage?.inputTokens > 0 ? `<div class="analysis-row"><span class="label">Chars per input token</span><span class="value">${(reqChars / r.usage.inputTokens).toFixed(1)}</span></div>` : ''}
+          ${r.usage?.outputTokens && r.usage?.outputTokens > 0 ? `<div class="analysis-row"><span class="label">Chars per output token</span><span class="value">${(respChars / r.usage.outputTokens).toFixed(1)}</span></div>` : ''}
+          ${sseCacheCreation > 0 || sseCacheRead > 0 ? `<div class="analysis-row"><span class="label">Cache</span><span class="value">creation: ${fmtNumber(sseCacheCreation)}, read: ${fmtNumber(sseCacheRead)}</span></div>` : ''}
+        </div>
+        <div class="analysis-section">
+          <h4 class="analysis-section-title">Config</h4>
+          ${thinkingEnabled ? `<div class="analysis-row"><span class="label">Thinking</span><span class="value">enabled (budget: ${fmtNumber(thinkingBudget)})</span></div>` : ''}
+          <div class="analysis-row"><span class="label">Max output tokens</span><span class="value">${fmtNumber(maxTokens)}</span></div>
+          <div class="analysis-row"><span class="label">Streaming</span><span class="value">${streamEnabled ? 'yes' : 'no'}</span></div>
+          ${Object.keys(metadata).length > 0 ? `<div class="analysis-row"><span class="label">Metadata keys</span><span class="value">${Object.keys(metadata).join(', ')}</span></div>` : ''}
+          <div class="analysis-row"><span class="label">Duration</span><span class="value">${r.durationMs != null ? fmtDuration(r.durationMs) : 'in progress'}</span></div>
+          <div class="analysis-row"><span class="label">Status</span><span class="value">${r.status}</span></div>
+        </div>
+      </div>`;
+  }
+
+  // non-streaming response
+  return `
+    <div class="analysis-grid">
+      <div class="analysis-section">
+        <h4 class="analysis-section-title">Request</h4>
+        <div class="analysis-row"><span class="label">Characters</span><span class="value">${fmtNumber(reqChars)}</span></div>
+        <div class="analysis-row"><span class="label">Lines (minified JSON)</span><span class="value">${fmtNumber(reqLines)}</span></div>
+        <div class="analysis-row"><span class="label">Messages</span><span class="value">${msgCount}</span></div>
+        <div class="analysis-row"><span class="label">Role distribution</span><span class="value">${Object.entries(roles).map(([k,v])=>`${k}: ${v}`).join(', ')}</span></div>
+        ${systemPromptChars > 0 ? `<div class="analysis-row"><span class="label">System prompt</span><span class="value">${fmtNumber(systemPromptChars)} chars</span></div>` : ''}
+        ${systemItemCount > 0 ? `<div class="analysis-row"><span class="label">System items</span><span class="value">${systemItemCount}</span></div>` : ''}
+        ${toolCount > 0 ? `<div class="analysis-row"><span class="label">Tools</span><span class="value">${toolCount} (${fmtNumber(toolDescChars)} chars desc)</span></div>` : ''}
+        ${toolNames.length > 0 ? `<div class="analysis-row"><span class="label">Tool names</span><span class="value">${toolNames.join(', ')}</span></div>` : ''}
+        ${imageCount > 0 ? `<div class="analysis-row"><span class="label">Images</span><span class="value">${imageCount}</span></div>` : ''}
+        ${fileCount > 0 ? `<div class="analysis-row"><span class="label">Files</span><span class="value">${fileCount}</span></div>` : ''}
+        <div class="analysis-row"><span class="label">Context size (sys+msgs)</span><span class="value">${fmtNumber(contextChars)} chars</span></div>
+        ${cacheBlocks > 0 ? `<div class="analysis-row"><span class="label">Cache blocks</span><span class="value">${cacheBlocks}</span></div>` : ''}
+      </div>
+      <div class="analysis-section">
+        <h4 class="analysis-section-title">Response</h4>
+        <div class="analysis-row"><span class="label">Characters</span><span class="value">${fmtNumber(respChars)}</span></div>
+        <div class="analysis-row"><span class="label">Output items</span><span class="value">${outputItems}</span></div>
+        <div class="analysis-row"><span class="label">Output text</span><span class="value">${fmtNumber(outputText.length)} chars</span></div>
+        ${stopReason ? `<div class="analysis-row"><span class="label">Stop reason</span><span class="value">${esc(stopReason)}</span></div>` : ''}
+        ${toolUseCount > 0 ? `<div class="analysis-row"><span class="label">Tool calls</span><span class="value">${toolUseCount}</span></div>` : ''}
+        ${thinkingOutputChars > 0 ? `<div class="analysis-row"><span class="label">Thinking output</span><span class="value">${fmtNumber(thinkingOutputChars)} chars</span></div>` : ''}
+      </div>
+      <div class="analysis-section">
+        <h4 class="analysis-section-title">Efficiency</h4>
+        <div class="analysis-row"><span class="label">Longest message</span><span class="value">${fmtNumber(longestMsgChars)} chars</span></div>
+        <div class="analysis-row"><span class="label">Avg message size</span><span class="value">${fmtNumber(avgMsgChars)} chars</span></div>
+        ${cacheHitRatio !== null ? `<div class="analysis-row"><span class="label">Cache hit ratio</span><span class="value">${cacheHitRatio}%</span></div>` : ''}
+      </div>
+      <div class="analysis-section">
+        <h4 class="analysis-section-title">Tokens</h4>
+        <div class="analysis-row"><span class="label">Input</span><span class="value">${fmtNumber(r.usage?.inputTokens||0)}</span></div>
+        <div class="analysis-row"><span class="label">Output</span><span class="value">${fmtNumber(r.usage?.outputTokens||0)}</span></div>
+        <div class="analysis-row"><span class="label">Total</span><span class="value">${fmtNumber(r.usage?.totalTokens||0)}</span></div>
+        ${r.usage?.inputTokens && r.usage?.inputTokens > 0 ? `<div class="analysis-row"><span class="label">Chars per input token</span><span class="value">${(reqChars / r.usage.inputTokens).toFixed(1)}</span></div>` : ''}
+        ${r.usage?.outputTokens && r.usage?.outputTokens > 0 ? `<div class="analysis-row"><span class="label">Chars per output token</span><span class="value">${(respChars / r.usage.outputTokens).toFixed(1)}</span></div>` : ''}
+        ${r.durationMs != null && r.usage?.totalTokens ? `<div class="analysis-row"><span class="label">Tokens/sec</span><span class="value">${(r.usage.totalTokens / (r.durationMs / 1000)).toFixed(1)}</span></div>` : ''}
+      </div>
+      <div class="analysis-section">
+        <h4 class="analysis-section-title">Config</h4>
+        ${thinkingEnabled ? `<div class="analysis-row"><span class="label">Thinking</span><span class="value">enabled (budget: ${fmtNumber(thinkingBudget)})</span></div>` : ''}
+        <div class="analysis-row"><span class="label">Max output tokens</span><span class="value">${fmtNumber(maxTokens)}</span></div>
+        <div class="analysis-row"><span class="label">Streaming</span><span class="value">${streamEnabled ? 'yes' : 'no'}</span></div>
+        ${Object.keys(metadata).length > 0 ? `<div class="analysis-row"><span class="label">Metadata keys</span><span class="value">${Object.keys(metadata).join(', ')}</span></div>` : ''}
+        <div class="analysis-row"><span class="label">Duration</span><span class="value">${fmtDuration(r.durationMs)}</span></div>
+        <div class="analysis-row"><span class="label">Status</span><span class="value">${r.status}</span></div>
+        <div class="analysis-row"><span class="label">Model</span><span class="value">${esc(r.model)}</span></div>
+        <div class="analysis-row"><span class="label">Endpoint</span><span class="value">${esc(r.path)}</span></div>
+        <div class="analysis-row"><span class="label">Upstream</span><span class="value">${esc(r.upstream)}</span></div>
+      </div>
+    </div>`;
+}
+
+function estimateObjectSize(obj) {
+  if (obj === null || obj === undefined) return 0;
+  if (typeof obj === 'string') return obj.length;
+  if (typeof obj !== 'object') return String(obj).length;
+  let total = 0;
+  if (Array.isArray(obj)) {
+    obj.forEach(item => { total += estimateObjectSize(item); });
+  } else {
+    total += 2; // {}
+    Object.keys(obj).forEach(key => {
+      total += key.length + 2; // key + quotes + colon
+      total += estimateObjectSize(obj[key]);
+    });
+  }
+  return total;
+}
+
+function estimateMessageContentSize(msg) {
+  if (!msg) return 0;
+  if (typeof msg.content === 'string') return msg.content.length;
+  if (Array.isArray(msg.content)) {
+    return msg.content.reduce((sum, c) => {
+      if (c.text) return sum + c.text.length;
+      if (c.input_text) return sum + c.input_text.length;
+      if (c.image_url && c.image_url.url) return sum + c.image_url.url.length;
+      return sum;
+    }, 0);
+  }
+  return 0;
+}
+
+function parseSseEvents(sseString) {
+  const events = {};
+  let currentEvent = null;
+  // Handle both real newlines and escaped ones
+  const normalized = sseString.replace(/\\n/g, '\n').replace(/\\"/g, '"');
+  for (const line of normalized.split('\n')) {
+    if (line.startsWith('event:')) {
+      currentEvent = line.slice(6).trim();
+    } else if (line.startsWith('data:')) {
+      const inner = line.slice(5).trim();
+      if (inner === '[DONE]') continue;
+      try { events[currentEvent] = JSON.parse(inner); } catch {}
+    }
+  }
+  return events;
+}
+
+function fmtNumber(n) {
+  return Number(n || 0).toLocaleString();
 }
 
 function togglePretty() {
@@ -607,6 +950,7 @@ function renderDetail(r) {
       <div class="tab${tab==='request'?' active':''}" data-tab="request" onclick="switchTab('request')">Request</div>
       <div class="tab${tab==='response'?' active':''}" data-tab="response" onclick="switchTab('response')">Response</div>
       <div class="tab${tab==='tokens'?' active':''}" data-tab="tokens" onclick="switchTab('tokens')">Tokens</div>
+      <div class="tab${tab==='analysis'?' active':''}" data-tab="analysis" onclick="switchTab('analysis')">Analysis</div>
       <div class="tab${tab==='raw'?' active':''}" data-tab="raw" onclick="switchTab('raw')">Raw</div>
     </div>
     <div class="tab-body">
@@ -646,6 +990,10 @@ function renderDetail(r) {
           Status: ${r.status}<br>
           Time: ${new Date(r.timestamp).toLocaleString()}
         </div>
+      </div>
+
+      <div id="pane-analysis" class="pane${tab==='analysis'?' active':''}">
+        <div id="analysis-content"></div>
       </div>
 
       <div id="pane-raw" class="pane${tab==='raw'?' active':''}">
@@ -723,6 +1071,84 @@ function setMode(mode) {
 document.getElementById('upstream-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') setUpstream();
 });
+// ── launch tools ──────────────────────────────────────────────────────────────
+
+function launchTool(tool) {
+  const input = document.getElementById('workdir-input');
+  const body = { tool };
+  if (input.value.trim()) body.dir = input.value.trim();
+  fetch('/api/launch', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body),
+  }).then(r => r.json()).then(d => {
+    if (!d.ok) alert('Failed to launch ' + tool + ': ' + (d.error || ''));
+  }).catch(err => alert('Failed: ' + err.message));
+}
+
+async function browseFolder() {
+  // Use the osascript "choose folder" dialog to let the user pick a folder
+  // and get its absolute path
+  const script = [
+    'choose folder',
+  ].join('\n');
+  try {
+    const { execSync } = require('child_process');
+    // Can't use require in browser — use osascript directly
+  } catch {}
+  // Use osascript to open a native folder picker
+  const osascript = [
+    'tell application "Finder"',
+    '    activate',
+    '    set chosen_folder to (choose folder with prompt "Select working directory:")',
+    '    POSIX path of chosen_folder',
+    'end tell',
+  ].join('\n');
+  // Send to backend to execute osascript
+  fetch('/api/osascript', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ script: osascript }),
+  }).then(r => r.json()).then(d => {
+    if (!d.ok) alert('Failed: ' + (d.error || ''));
+    else if (d.path) document.getElementById('workdir-input').value = d.path;
+  }).catch(err => alert('Failed: ' + err.message));
+}
+
+async function createFolder() {
+  const input = document.getElementById('workdir-input');
+  let val = input.value.trim();
+  if (!val) {
+    val = prompt('Enter folder path to create:');
+    if (!val) return;
+  }
+  fetch('/api/mkdir', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ dir: val }),
+  }).then(r => r.json()).then(d => {
+    if (!d.ok) alert('Failed to create folder: ' + (d.error || ''));
+    else if (d.path) input.value = d.path;
+  }).catch(err => alert('Failed: ' + err.message));
+}
+
+async function createFolder() {
+  const input = document.getElementById('workdir-input');
+  let val = input.value.trim();
+  if (!val) {
+    val = prompt('Enter folder path to create (relative to current dir):');
+    if (!val) return;
+  }
+  fetch('/api/mkdir', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ dir: val }),
+  }).then(r => r.json()).then(d => {
+    if (!d.ok) alert('Failed to create folder: ' + (d.error || ''));
+    else if (d.path) input.value = d.path;
+  }).catch(err => alert('Failed: ' + err.message));
+}
+
 // ── actions ───────────────────────────────────────────────────────────────────
 
 function doExport(fmt) {

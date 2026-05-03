@@ -2,6 +2,9 @@
 require('dotenv').config();
 const express = require('express');
 const path = require('node:path');
+const { execFile, exec } = require('node:child_process');
+const http = require('node:http');
+const fs = require('node:fs');
 const sse = require('./sse');
 const api = require('./api');
 const config = require('./config');
@@ -28,6 +31,95 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Proxy /v1/* — standard OpenAI/Anthropic paths
 app.all('/v1/*', createProxyMiddleware());
+
+// Fetch model name from upstream /v1/models
+function fetchLocalModel() {
+  return new Promise((resolve, reject) => {
+    http.get(config.upstreamUrl + '/v1/models', { timeout: 5000 }, (res) => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        try {
+          const j = JSON.parse(data);
+          const models = j.data || j.models || [];
+          if (models.length > 0) resolve(models[0].id || models[0].name);
+          else resolve(null);
+        } catch { resolve(null); }
+      });
+    }).on('error', () => resolve(null));
+  });
+}
+
+// Run osascript and return result
+app.post('/api/osascript', (req, res) => {
+  const { script } = req.body || {};
+  if (!script) return res.status(400).json({ error: 'missing script' });
+  execFile('osascript', ['-e', script], { maxBuffer: 1024 * 1024 }, (err, stdout) => {
+    if (err) return res.status(500).json({ error: err.message });
+    const p = stdout.trim().replace(/\n$/, '');
+    res.json({ ok: true, path: p });
+  });
+});
+
+// Create a folder on the server
+app.post('/api/mkdir', (req, res) => {
+  const { dir } = req.body || {};
+  if (!dir) return res.status(400).json({ error: 'missing dir' });
+  const resolved = path.resolve(dir);
+  fs.mkdir(resolved, { recursive: true }, (err) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ ok: true, path: resolved });
+  });
+});
+
+// Launch Claude Code or Codex in a new terminal window
+app.post('/api/launch', async (req, res) => {
+  const { tool, model, dir } = req.body || {};
+  const proxyUrl = `http://127.0.0.1:${PORT}`;
+  const cwd = dir ? path.resolve(dir) : null;
+  let cmd, args, env;
+
+  let launchCmd;
+  if (tool === 'claude-local') {
+    const modelName = model || await fetchLocalModel();
+    if (!modelName) return res.status(502).json({ error: 'cannot reach upstream /v1/models' });
+    launchCmd = `CLAUDECODE= ANTHROPIC_BASE_URL="${proxyUrl}" claude --model ${modelName} --dangerously-skip-permissions`;
+  } else if (tool === 'claude') {
+    launchCmd = `CLAUDECODE= ANTHROPIC_BASE_URL="${proxyUrl}" claude --dangerously-skip-permissions`;
+  } else {
+    launchCmd = `HTTP_PROXY="${proxyUrl}" HTTPS_PROXY="${proxyUrl}" codex`;
+  }
+
+  // Escape all double quotes for AppleScript string
+  const escapedCmd = launchCmd.replace(/"/g, '\\"');
+  const escapedCwd = cwd ? cwd.replace(/"/g, '\\"') : '';
+
+  let shellCmd;
+  if (cwd) {
+    shellCmd = `cd \\"${escapedCwd}\\" && ${escapedCmd}`;
+  } else {
+    shellCmd = escapedCmd;
+  }
+
+  const script = [
+    'tell application "Terminal"',
+    `    do script "${shellCmd}"`,
+    '    activate',
+    'end tell',
+  ].join('\n');
+
+  cmd = 'osascript';
+  args = ['-e', script];
+  env = (tool === 'claude' || tool === 'claude-local') ? { ...process.env, CLAUDECODE: '' } : process.env;
+
+  execFile(cmd, args, { env }, (err) => {
+    if (err) {
+      console.error('[LAUNCH] error:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+    res.json({ ok: true });
+  });
+});
 
 // Catch-all for MITM'd requests — only log actual API calls, silence noise.
 const API_PATHS = /^\/(v1\/|backend-api\/(codex\/responses|conversation|responses))/;
