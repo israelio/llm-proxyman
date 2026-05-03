@@ -7,6 +7,7 @@ A local HTTP proxy that intercepts LLM API calls from tools like **Claude Code**
 - **Real-time web UI** — live request list with status, model, duration, and token counts
 - **Response viewer** — streaming display of LLM outputs as they arrive
 - **Token tracker** — per-request input / output / total token breakdown
+- **Analysis view** — deep request/response breakdown with timing, token stats, and payload comparison
 - **Raw JSON inspector** — full request and response payloads with copy-to-clipboard
 - **Search and filter** — narrow by model, status code, or keyword
 - **Export** — save request history as JSON or CSV
@@ -16,13 +17,25 @@ A local HTTP proxy that intercepts LLM API calls from tools like **Claude Code**
 
 ## Screenshots
 
-### Tokens View — track consumption from local LLMs, Anthropic, and OpenAI
+### Request View — inspect full message payloads sent to the LLM
 
-![Tokens View](public/tokens-view.png)
+![Request View](public/request-view.jpg)
 
 ### Response View — live streaming output inspection
 
-![Response View](public/response-view.png)
+![Response View](public/response-view.jpg)
+
+### Tokens View — track consumption from local LLMs, Anthropic, and OpenAI
+
+![Tokens View](public/tokens-view.jpg)
+
+### Analysis View — deep request/response and token breakdown
+
+![Analysis View](public/analysis-view.jpg)
+
+### Raw View — full JSON payloads with copy-to-clipboard
+
+![Raw View](public/raw-view.jpg)
 
 ## Install
 
@@ -63,6 +76,40 @@ Open `http://localhost:8080` after starting the proxy.
   - **Tokens** — input / output / total token counts
   - **Raw** — full JSON, copy to clipboard
 - **Toolbar** — search, filter by model/status, export JSON/CSV, clear history
+
+---
+
+## Quick Start — Run Claude Code or Codex
+
+One-liners that start the proxy and open your tool in one command.
+
+**Claude Code with local LLM:**
+
+```bash
+UPSTREAM_URL=http://127.0.0.1:8001 npm start &
+ANTHROPIC_BASE_URL="http://127.0.0.1:8080" claude --model your-model-name
+```
+
+**Claude Code with real Anthropic API:**
+
+```bash
+UPSTREAM_URL=https://api.anthropic.com npm start &
+ANTHROPIC_BASE_URL="http://127.0.0.1:8080" claude
+```
+
+**Codex CLI with OpenAI:**
+
+```bash
+npm start &
+HTTPS_PROXY=http://127.0.0.1:8080 HTTP_PROXY=http://127.0.0.1:8080 codex
+```
+
+Or with base URL override:
+
+```bash
+npm start &
+OPENAI_BASE_URL="http://127.0.0.1:8080" codex
+```
 
 ---
 
