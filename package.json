@@ -3,8 +3,8 @@
   "bin": {
     "llm-proxyman": "src/index.js"
   },
-  "version": "0.1.14",
-  "description": "Local proxy for Claude Code with real-time web UI",
+ "version": "0.1.14",
+  "description": "Local HTTP proxy that intercepts and inspects LLM API calls from Claude Code, Codex CLI, and OpenAI/Anthropic clients. Real-time web UI to view requests, responses, tokens, and timing. Routes to local LLM servers (Ollama, LM Studio, vLLM) or cloud APIs. MITM mode, SQLite persistence.",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
@@ -18,6 +18,10 @@
     "Dockerfile",
     ".dockerignore"
   ],
+  "homepage": "https://github.com/israelio/llm-proxyman",
+  "bugs": {
+    "url": "https://github.com/israelio/llm-proxyman/issues"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/israelio/llm-proxyman"
@@ -25,12 +29,40 @@
   "license": "MIT",
   "keywords": [
     "proxy",
+    "mitm",
+    "llm",
     "claude",
     "anthropic",
     "openai",
-    "llm",
-    "mitm",
-    "inspector"
+    "codex",
+    "ollama",
+    "lm-studio",
+    "vllm",
+    "gpt",
+    "token",
+    "token-tracking",
+    "debugger",
+    "inspector",
+    "web-ui",
+    "sse",
+    "streaming",
+    "sqlite",
+    "docker",
+    "local-llm",
+    "api-proxy",
+    "request-inspector",
+    "response-inspector",
+    "prompt",
+    "anthropic-api",
+    "openai-api",
+    "claude-code",
+    "token-count",
+    "llm-proxy",
+    "postman",
+    "proxyman",
+    "llm-proxyman",
+    "llm-proxy",
+    "llm proxy"
   ],
   "dependencies": {
     "dotenv": "^16.4.5",
@@ -38,5 +70,12 @@
   },
   "devDependencies": {
     "supertest": "^7.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/israelio/llm-proxyman"
   }
 }
